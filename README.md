@@ -1,8 +1,8 @@
-# prostock — EML Alpha Discovery Pipeline
+# prostock — EML Alpha Discovery & FROST Meta-Fitness Engine
 
-**プロジェクト**: Q.E.D. EML (Evolved Machine Learning) Alpha Discovery & Backtest Pipeline  
-**ステータス**: ✅ 実装完了・全テスト通過 (198 passed)  
-**最終更新**: 2026-05-02
+**プロジェクト**: Q.E.D. EML Alpha Discovery / Backtest / FROST Phase 5 Selection Pipeline  
+**ステータス**: ✅ 実装完了・全テスト通過 (278 passed)  
+**最終更新**: 2026-06-10
 
 ---
 
@@ -34,6 +34,13 @@ event_study_summaries  (PostgreSQL)
     [eml_alpha_promotion_bridge]
     [knowledge_artifacts]
     [audit_events]
+          │
+          ▼  Phase 5 — FROST Meta-Fitness Engine  ← NEW
+    [frost_fitness_candidates]
+    [frost_evaluations]          (10軸スコア)
+    [frost_selection_decisions]  (SELECTED/HOLD/REJECTED/REVIEW_REQUIRED)
+    [frost_promotion_bridges]    (Q.E.D. 昇格 bridge)
+    [frost_audit_event_bridges]  (4-status audit)
 ```
 
 ---
@@ -101,7 +108,7 @@ fitness = 0.30 × rank_IC
 
 ## テスト状況
 
-### ユニットテスト (173 passed)
+### ユニットテスト (229 passed)
 
 | ファイル | テスト数 | カバレッジ |
 |----------|----------|-----------|
@@ -111,15 +118,17 @@ fitness = 0.30 × rank_IC
 | `test_event_study_writer.py` | 12 | EventStudyWriter UPSERT |
 | `test_target_rule_resolver.py` | 17 | TargetRuleResolver |
 | `test_trace_id_consistency.py` | 13 | trace_id 伝播・一貫性 |
+| `test_frost_layers.py` | **56** | FROST全レイヤー (Config/Contracts/Features/Metrics/Stability/PBO/Selector/Ranker/Decision/Report) |
 
-### 統合テスト (25 passed)
+### 統合テスト (49 passed)
 
 | ファイル | テスト数 | カバレッジ |
 |----------|----------|-----------|
 | `test_eml_pipeline_integration.py` | 25 | Phase A→E E2E、DB UPSERT安全性、NaN/Infガード、dry_run動作 |
 | `test_pipeline_integration.py` | — | Event Study Pipeline Phase A→D |
+| `test_frost_integration.py` | **24** | FROST E2E (Writer/Runner/HardGates/Bridges/DataQuality/Report) |
 
-**合計: 198 passed**
+**合計: 278 passed**
 
 ---
 
@@ -185,9 +194,25 @@ QED_PG_DSN="..." python -m pytest tests/ -v
 | `make eml-backtest-summary` | 直近バックテスト結果表示 |
 | `make eml-status` | DBテーブルカウント確認 |
 
+## Makefile ターゲット一覧 (FROST)
+
+| ターゲット | 説明 |
+|-----------|------|
+| `make frost-init` | migrations + views を DB に適用 |
+| `make frost-init-dry` | 適用の dry-run 確認 |
+| `make frost-pipeline` | FROST 選抜パイプライン実行 |
+| `make frost-pipeline-dry` | パイプライン dry-run |
+| `make frost-backfill` | EML 候補の遡及評価 |
+| `make frost-backfill-dry` | 遡及評価 dry-run |
+| `make frost-promote` | 承認済み候補を Q.E.D. へ昇格 |
+| `make frost-promote-dry` | 昇格 dry-run |
+| `make frost-verify` | テーブル存在・件数・品質の全体検証 |
+| `make frost-status` | 実行ステータス確認 |
+| `make frost-clean` | ローカルキャッシュ削除 |
+
 ---
 
-## 環境変数一覧
+## 環境変数一覧 (EML)
 
 | 変数名 | デフォルト | 説明 |
 |--------|-----------|------|
@@ -204,16 +229,47 @@ QED_PG_DSN="..." python -m pytest tests/ -v
 | `EML_BACKTEST_COST_BPS` | `2.0` | コスト (bps) |
 | `EML_BACKTEST_SLIPPAGE_BPS` | `2.0` | スリッページ (bps) |
 
+## 環境変数一覧 (FROST)
+
+| 変数名 | デフォルト | 説明 |
+|--------|-----------|------|
+| `FROST_ENABLED` | `1` | `0` で FROST 無効化 |
+| `FROST_DRY_RUN` | `0` | `1` で dry-run モード |
+| `FROST_BATCH_LABEL` | `frost_v1` | バッチラベル |
+| `FROST_TOP_K` | `25` | 最大選抜候補数 |
+| `FROST_PROMOTION_TOP_K` | `5` | 最大昇格候補数 |
+| `FROST_PBO_THRESHOLD` | `0.20` | PBO Hard Gate 上限 |
+| `FROST_MIN_OOS_SHARPE` | `0.50` | OOS Sharpe Hard Gate 下限 |
+| `FROST_MIN_RANK_IC` | `0.02` | Rank IC Hard Gate 下限 |
+| `FROST_MAX_TURNOVER` | `4.0` | Turnover Hard Gate 上限 |
+| `FROST_MAX_DRAWDOWN` | `0.20` | Max Drawdown Hard Gate 上限 |
+| `FROST_MIN_REGIME_PASS_RATIO` | `0.75` | Regime Pass Hard Gate 下限 |
+| `FROST_MAX_COMPLEXITY_SCORE` | `0.60` | Complexity Hard Gate 上限 |
+| `FROST_MIN_SELECTION_STABILITY` | `0.60` | Selection Stability Hard Gate 下限 |
+| `FROST_W_PREDICTIVE` | `0.20` | 予測力スコア重み |
+| `FROST_W_OOS_SHARPE` | `0.15` | OOS Sharpe スコア重み |
+| `FROST_W_REGIME_STABILITY` | `0.15` | レジーム安定性重み |
+| `FROST_W_SELECTION_CONSISTENCY` | `0.10` | 選択一貫性重み |
+| `FROST_W_CAPACITY` | `0.10` | 収益容量重み |
+| `FROST_W_PBO_PENALTY` | `0.02` | PBO ペナルティ重み |
+| `FROST_W_TURNOVER_PENALTY` | `0.10` | Turnover ペナルティ重み |
+| `FROST_W_COMPLEXITY_PENALTY` | `0.05` | 複雑度ペナルティ重み |
+| `FROST_W_DRAWDOWN_PENALTY` | `0.05` | DD ペナルティ重み |
+| `FROST_W_FRAGILITY_PENALTY` | `0.03` | 脆弱性ペナルティ重み |
+
 ---
 
 ## 主要な設計方針・ガード
 
-1. **NaN/Inf ガード**: `EMLNode.to_json()` で `raw_weight` の NaN/Inf を `null` に変換
+1. **NaN/Inf ガード**: `EMLNode.to_json()` で `raw_weight` の NaN/Inf を `null` に変換。FROST 全 writer でも `_safe_float()` / `_safe_json()` を必須適用
 2. **UPSERT 安全性**: 全テーブルで `ON CONFLICT DO UPDATE` — 同一 `run_id` / `candidate_id` の再実行が安全
-3. **trace_id 伝播**: run → candidates → backtest → promotion → audit_events まで一貫
-4. **dry_run 分離**: `dry_run=True` では `eml_alpha_promotion_bridge` / `knowledge_artifacts` に書き込まない。`audit_events` には `DRY_RUN` 決定を記録
+3. **trace_id 伝播**: run → candidates → backtest → promotion → audit_events → FROST 全層まで一貫
+4. **dry_run 分離**: `dry_run=True` では canonical bridge への書き込みを行わない。`audit_events` / `frost_audit_event_bridges` には `DRY_RUN` 決定を記録
 5. **安全式検証**: `assert_safe_expr()` でルックアヘッドバイアス含む危険な式を除外
 6. **psycopg3 準拠**: `%s` プレースホルダー、`executemany`、明示的 `conn.commit()`
+7. **FROST Hard Gates**: PBO > 0.20 / rank_ic < 0.02 / oos_sharpe < 0.50 / turnover > 4.0 / drawdown > 0.20 / regime_pass_ratio < 0.75 / complexity > 0.60 / selection_stability < 0.60 の 8 ゲートでスコア計算前排除
+8. **PBO (CPCV 近似)**: Combinatorial Cross-Validation 近似でバックテスト過学習確率を推定。numpy 非依存の純 Python 実装
+9. **Near-Duplicate 抑制**: formula token の Jaccard 類似度 ≥ 0.95 で重複候補を自動排除
 
 ---
 
@@ -227,14 +283,156 @@ prostock/
 │   │   └── promotion_bridge.py
 │   ├── backtest/             # バックテストハーネス (6モジュール)
 │   ├── features/             # 特徴量構築 (4モジュール)
-│   ├── io/                   # PostgreSQL IO層 (3モジュール)
+│   ├── frost/                # FROST Meta-Fitness Engine (11モジュール) ← NEW
+│   │   ├── frost_config.py        # FrostConfig dataclass + load_frost_config()
+│   │   ├── frost_contracts.py     # 全 dataclass 定義
+│   │   ├── frost_features.py      # 特徴量抽出関数群
+│   │   ├── frost_metrics.py       # スコア計算・ペナルティ計算
+│   │   ├── frost_stability.py     # fold/regime/sign 安定性スコア
+│   │   ├── frost_pbo.py           # CPCV 近似 PBO・fragility
+│   │   ├── frost_selector.py      # hard gate 判定・evaluate_candidate
+│   │   ├── frost_ranker.py        # ランキング・near-dup 検出
+│   │   ├── frost_decision_engine.py  # 最終ポリシー適用
+│   │   ├── frost_runner.py        # E2E オーケストレーター
+│   │   ├── frost_report_builder.py   # Markdown/JSON レポート生成
+│   │   └── __init__.py
+│   ├── io/                   # PostgreSQL IO層 (6モジュール)
+│   │   ├── postgres_eml_alpha_writer.py
+│   │   ├── postgres_eml_backtest_writer.py
+│   │   ├── postgres_eml_evaluation_writer.py
+│   │   ├── postgres_frost_writer.py          # FROST UPSERT ← NEW
+│   │   ├── postgres_frost_audit_bridge.py    # audit_events 発行 ← NEW
+│   │   └── postgres_frost_promotion_bridge.py  # 昇格 bridge ← NEW
 │   ├── metrics/              # 評価指標 (5モジュール)
 │   └── pg_io/                # Event Study IO層
-├── scripts/postgres/
-│   └── run_eml_pipeline.py   # マスタースクリプト
+├── docs/runbooks/
+│   ├── event_study_pipeline_runbook.md
+│   ├── frost_engine.md           # FROST Operations Runbook ← NEW
+│   ├── frost_scorecard.md        # スコアカード詳細仕様 ← NEW
+│   ├── frost_promotion_policy.md # 昇格ポリシー ← NEW
+│   └── frost_failure_modes.md    # 障害モードと対処 ← NEW
+├── qedschema/
+│   ├── migrations/
+│   │   ├── 060_frost_runs.sql
+│   │   ├── 061_frost_fitness_candidates.sql
+│   │   ├── 062_frost_evaluations.sql
+│   │   ├── 063_frost_selection_decisions.sql
+│   │   ├── 064_frost_promotion_bridges.sql
+│   │   └── 065_frost_audit_event_bridges.sql
+│   └── views/
+│       ├── 060_v_frost_runs.sql
+│       ├── 061_v_frost_candidate_scores.sql
+│       ├── 062_v_frost_selection_summary.sql
+│       └── 063_v_frost_promotion_status.sql
+├── scripts/
+│   ├── postgres/
+│   │   └── run_eml_pipeline.py   # EML マスタースクリプト
+│   └── frost/                    # FROST スクリプト群 ← NEW
+│       ├── init_frost_tables.sh
+│       ├── run_frost_engine.sh
+│       ├── run_frost_backfill.sh
+│       ├── run_frost_promote.sh
+│       └── verify_frost_engine.sh
 ├── tests/
-│   ├── unit/                 # ユニットテスト (173 passed)
-│   └── integration/          # 統合テスト (25 passed)
+│   ├── unit/
+│   │   ├── test_eml_layers.py    # EML ユニット (65 passed)
+│   │   ├── test_frost_layers.py  # FROST ユニット (56 passed) ← NEW
+│   │   └── ...
+│   └── integration/
+│       ├── test_eml_pipeline_integration.py  # EML 統合 (25 passed)
+│       ├── test_frost_integration.py         # FROST 統合 (24 passed) ← NEW
+│       └── ...
 ├── Makefile
 └── README.md
 ```
+
+---
+
+## FROST Meta-Fitness Engine (Phase 5)
+
+### 概要
+
+FROST (Fitness-Ranked Overfitting Suppression Testing) は EML / event study / Scrapling 由来の alpha 候補を **10 軸評価** して SELECTED / HOLD / REJECTED / REVIEW_REQUIRED を決定する Phase 5 選抜層です。
+
+### frost_score 計算式
+
+```
+frost_score =
+  + w_predictive       × normalized_predictive_score    (0.20)
+  + w_oos_sharpe       × normalized_oos_sharpe           (0.15)
+  + w_regime_stability × normalized_regime_stability     (0.15)
+  + w_selection_consistency × normalized_consistency    (0.10)
+  + w_capacity         × normalized_capacity_score       (0.10)
+  − w_pbo_penalty      × pbo_score                       (0.02)
+  − w_turnover_penalty × turnover_penalty                (0.10)
+  − w_complexity_penalty × complexity_penalty            (0.05)
+  − w_drawdown_penalty × drawdown_penalty                (0.05)
+  − w_fragility_penalty × fragility_penalty              (0.03)
+```
+
+### Hard Gates (いずれか 1 つでも違反 → REJECTED)
+
+| ゲート | 条件 | デフォルト閾値 |
+|--------|------|---------------|
+| PBO 過学習 | `pbo_score >` | 0.20 |
+| Rank IC 不足 | `rank_ic <` | 0.02 |
+| OOS Sharpe 不足 | `oos_sharpe <` | 0.50 |
+| Turnover 超過 | `turnover >` | 4.0 |
+| Max Drawdown 超過 | `max_drawdown >` | 0.20 |
+| Regime Pass 不足 | `regime_pass_ratio <` | 0.75 |
+| 複雑度超過 | `complexity_score >` | 0.60 |
+| 安定性不足 | `selection_consistency_score <` | 0.60 |
+
+### FROST パイプライン実行
+
+```bash
+# 環境変数設定
+export QED_PG_DSN="postgresql://postgres:postgres@localhost:5432/qed_dev"
+export FROST_ENABLED=1
+export FROST_DRY_RUN=0
+
+# 初期セットアップ (migrations + views)
+make frost-init
+
+# FROST 選抜パイプライン実行
+make frost-pipeline
+
+# dry-run で確認
+make frost-pipeline-dry
+
+# 昇格実行
+make frost-promote
+
+# 全体検証
+make frost-verify
+
+# ステータス確認
+make frost-status
+```
+
+### FROST DB テーブル
+
+| テーブル | 主キー / UNIQUE | 概要 |
+|----------|----------------|------|
+| `frost_runs` | `run_id` | FROST 実行メタデータ |
+| `frost_fitness_candidates` | `(run_id, candidate_hash)` | 評価対象候補 |
+| `frost_evaluations` | `(run_id, candidate_id)` | 10 軸評価結果・frost_score |
+| `frost_selection_decisions` | `(run_id, candidate_id)` | SELECTED/HOLD/REJECTED/REVIEW_REQUIRED |
+| `frost_promotion_bridges` | `(run_id, candidate_id)` | 昇格 bridge |
+| `frost_audit_event_bridges` | `bridge_id` | 4-status audit |
+
+### FROST DB ビュー
+
+| ビュー | 概要 |
+|--------|------|
+| `v_frost_runs` | 実行ダッシュボード (選抜率・平均スコア) |
+| `v_frost_candidate_scores` | 候補ごとの全スコア一覧 |
+| `v_frost_selection_summary` | 実行ごとの決定集計 |
+| `v_frost_promotion_status` | 昇格候補の最新状態追跡 |
+
+### 詳細ドキュメント
+
+- [frost_engine.md](docs/runbooks/frost_engine.md) — Operations Runbook
+- [frost_scorecard.md](docs/runbooks/frost_scorecard.md) — スコアカード詳細仕様
+- [frost_promotion_policy.md](docs/runbooks/frost_promotion_policy.md) — 昇格ポリシー
+- [frost_failure_modes.md](docs/runbooks/frost_failure_modes.md) — 障害モードと対処

@@ -160,6 +160,76 @@ FROM audit_events WHERE event_type LIKE 'EML_%' \
 GROUP BY decision ORDER BY 1;"
 
 # ---------------------------------------------------------------------------
+# FROST Meta-Fitness Engine
+# ---------------------------------------------------------------------------
+
+frost-init: ## FROST テーブル・ビューを初期化する
+	QED_PG_DSN=$(PG_DSN) bash scripts/frost/init_frost_tables.sh
+
+frost-init-dry: ## FROST 初期化 DRY_RUN (SQL 表示のみ)
+	QED_PG_DSN=$(PG_DSN) bash scripts/frost/init_frost_tables.sh --dry-run
+
+frost-pipeline: ## FROST フルパイプライン実行
+	PYTHONPATH=$(REPO_ROOT) \
+	QED_PG_DSN=$(PG_DSN) \
+	FROST_ENABLED=1 \
+	FROST_DRY_RUN=0 \
+	  bash scripts/frost/run_frost_engine.sh
+
+frost-pipeline-dry: ## FROST フルパイプライン DRY_RUN
+	PYTHONPATH=$(REPO_ROOT) \
+	QED_PG_DSN=$(PG_DSN) \
+	FROST_ENABLED=1 \
+	FROST_DRY_RUN=1 \
+	  bash scripts/frost/run_frost_engine.sh --dry-run
+
+frost-backfill: ## FROST 過去候補の遡及評価
+	PYTHONPATH=$(REPO_ROOT) \
+	QED_PG_DSN=$(PG_DSN) \
+	  bash scripts/frost/run_frost_backfill.sh
+
+frost-backfill-dry: ## FROST 遡及評価 DRY_RUN
+	PYTHONPATH=$(REPO_ROOT) \
+	QED_PG_DSN=$(PG_DSN) \
+	  bash scripts/frost/run_frost_backfill.sh --dry-run
+
+frost-promote: ## FROST SELECTED候補を Q.E.D. に昇格
+	PYTHONPATH=$(REPO_ROOT) \
+	QED_PG_DSN=$(PG_DSN) \
+	  bash scripts/frost/run_frost_promote.sh
+
+frost-promote-dry: ## FROST 昇格 DRY_RUN
+	PYTHONPATH=$(REPO_ROOT) \
+	QED_PG_DSN=$(PG_DSN) \
+	  bash scripts/frost/run_frost_promote.sh --dry-run
+
+frost-verify: ## FROST エンジン動作検証
+	QED_PG_DSN=$(PG_DSN) bash scripts/frost/verify_frost_engine.sh
+
+frost-status: ## FROST テーブル件数・ステータス確認
+	psql $(PG_DSN) -c "\
+SELECT 'frost_runs'                AS tbl, COUNT(*) FROM frost_runs UNION ALL \
+SELECT 'frost_fitness_candidates'  AS tbl, COUNT(*) FROM frost_fitness_candidates UNION ALL \
+SELECT 'frost_evaluations'         AS tbl, COUNT(*) FROM frost_evaluations UNION ALL \
+SELECT 'frost_selection_decisions' AS tbl, COUNT(*) FROM frost_selection_decisions UNION ALL \
+SELECT 'frost_promotion_bridges'   AS tbl, COUNT(*) FROM frost_promotion_bridges UNION ALL \
+SELECT 'frost_audit_event_bridges' AS tbl, COUNT(*) FROM frost_audit_event_bridges ORDER BY 1;"
+	psql $(PG_DSN) -c "\
+SELECT decision, COUNT(*) \
+FROM frost_selection_decisions \
+GROUP BY decision ORDER BY 1;"
+
+frost-clean: ## FROST テーブルの全データを削除 (危険: 本番禁止)
+	@echo "WARNING: frost テーブルの全データを削除します"
+	@read -p "本当に実行しますか? [y/N]: " ans; \
+	if [ "$$ans" = "y" ]; then \
+	  psql $(PG_DSN) -c "TRUNCATE frost_audit_event_bridges, frost_promotion_bridges, frost_selection_decisions, frost_evaluations, frost_fitness_candidates, frost_runs CASCADE"; \
+	  echo "削除完了"; \
+	else \
+	  echo "キャンセルしました"; \
+	fi
+
+# ---------------------------------------------------------------------------
 test: ## Python ユニットテスト実行
 	PYTHONPATH=$(PYPATH) $(PYTHON) -m pytest tests/ -v 2>/dev/null || \
 	  PYTHONPATH=$(PYPATH) $(PYTHON) -m pytest analytics/python/ -v 2>/dev/null || \
