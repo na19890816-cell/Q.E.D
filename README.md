@@ -436,3 +436,203 @@ make frost-status
 - [frost_scorecard.md](docs/runbooks/frost_scorecard.md) — スコアカード詳細仕様
 - [frost_promotion_policy.md](docs/runbooks/frost_promotion_policy.md) — 昇格ポリシー
 - [frost_failure_modes.md](docs/runbooks/frost_failure_modes.md) — 障害モードと対処
+
+---
+
+## FROST v2 改善版レイヤー (Q.E.D. Enhancement Handoff)
+
+> commit `940dca1` — 2025-06-12
+
+### 概要
+
+既存の FROST Meta-Fitness Engine (Phase 5) を壊さず、以下 9 レイヤーを追加実装。
+全モジュール **pure Python / numpy 不使用** / **trace_id end-to-end** / **rerun-safe UPSERT** 準拠。
+
+---
+
+### P0-1: Formal Lag Analyzer
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/alpha/eml/eml_lag_analyzer.py` | `LagAnnotation` / `LagSafetyProof` / `analyze_lag()` / `check_future_leakage()` |
+| `analytics/python/alpha/eml/eml_ast_safety_proof.py` | AST 安全証明 DB 保存 (`ASTSafetyRecord`) |
+
+---
+
+### P0-2: OOS Signal Correlation Dedup
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/frost/frost_signal_dedup.py` | `SignalDedupResult` / `apply_signal_dedup()` — OOS 相関閾値超過シグナルを重複排除 |
+
+---
+
+### P0-3: Regime Entropy
+
+Shannon エントロピーでレジーム偏在度を定量化。均等分布 → スコア高、特定レジーム集中 → ペナルティ。
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/metrics/regime_entropy.py` | `RegimeEntropyResult` / `build_regime_entropy_result()` / `regime_entropy_to_score_components()` |
+
+**主要環境変数:** `FROST_REGIME_ENTROPY_ENABLED=1`, `FROST_REGIME_ENTROPY_MIN=0.60`
+
+---
+
+### P0-4: Fragility Surface Index (FSI)
+
+パラメータ摂動 (`window` / `cutoff` / `threshold` / `vol_scale` 等) に対する局所安定性を曲面スコア化。コールバック型評価関数で backtest エンジンと疎結合。
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/frost/frost_surface_sampler.py` | `ParameterSpec` / `PerturbationGrid` / `generate_surface_samples()` |
+| `analytics/python/frost/frost_fragility_surface.py` | `FragilitySurfaceResult` / `compute_fragility_surface(eval_func)` / `fsi_hard_gate_pass()` |
+| `qedschema/migrations/078_frost_fragility_surfaces.sql` | FSI 計算結果テーブル |
+
+**主要環境変数:** `FROST_FSI_ENABLED=1`, `FROST_FSI_MAX=0.40`, `FROST_FSI_PENALTY_SCALE=0.25`
+
+---
+
+### P0-5: PostgreSQL Scale Strategy
+
+| マイグレーション | 内容 |
+|----------------|------|
+| `079_frost_indexes.sql` | `frost_evaluations` / `selection_decisions` / `fitness_candidates` / `eml_backtest_folds` + JSONB GIN インデックス |
+| `080_frost_materialized_views.sql` | `frost_candidate_summary_mv` / `frost_run_stats_mv` / `frost_decision_history_mv` |
+| `081_frost_partitioning_prep.sql` | `frost_partition_registry` / `frost_table_size_log` / `frost_log_table_sizes()` 関数 / `frost_partition_migration_guide` view |
+
+---
+
+### P1-1: Alpha Genome Layer
+
+候補式を 10 軸 (`momentum` / `mean_reversion` / `flow` / `volatility` / `value` / `event` / `macro` / `microstructure` / `sentiment` / `credit_leverage`) の因子 DNA ベクトルに分解。
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/genome/alpha_genome_encoder.py` | `GenomeVector` / `encode_formula()` / `genome_cosine_similarity()` |
+| `analytics/python/genome/alpha_genome_similarity.py` | `compute_novelty_scores()` / `find_genome_near_duplicates()` |
+| `analytics/python/genome/alpha_genome_cluster.py` | K-Means++ pure Python / `ClusteringResult` |
+| `analytics/python/genome/alpha_genome_report.py` | `GenomeReport` / `genome_report_to_frost_features()` |
+| `analytics/python/genome/alpha_genome_runner.py` | `run_genome_layer()` — オーケストレーター |
+| `qedschema/migrations/074〜076_*.sql` | genome_profiles / clusters / similarity_edges (上三角制約付き) |
+
+---
+
+### P1-2: Crowding Detector
+
+候補シグナルを 15 既知因子 (`MOM_12M` / `BM_RATIO` / `LOW_VOL` 等) へ OLS 単回帰し、混雑度スコアを算出。
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/frost/frost_known_factor_library.py` | `KnownFactor` × 15 / `match_formula_to_factors()` |
+| `analytics/python/frost/frost_crowding.py` | `CrowdingScore` / `compute_crowding_score()` / pure Python OLS |
+| `qedschema/migrations/077_frost_crowding_scores.sql` | Crowding スコアテーブル |
+
+**主要環境変数:** `FROST_CROWDING_ENABLED=1`, `FROST_CROWDING_R2_MAX=0.80`
+
+---
+
+### P2-1: Causal Discovery Layer
+
+先行/遅行相関の非対称性 (Granger 近似) と複数レジームでの係数不変性を検定。
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/causal/causal_direction.py` | `CausalDirectionResult` / `compute_causal_direction()` |
+| `analytics/python/causal/causal_invariance.py` | `InvarianceResult` / `compute_invariance()` |
+| `analytics/python/causal/causal_diagnostics.py` | `CausalDiagnostics` / `causal_diagnostics_to_frost_features()` |
+| `analytics/python/causal/causal_runner.py` | `run_causal_layer()` / `run_causal_batch()` |
+| `analytics/python/causal/causal_bridge.py` | psycopg3 upsert ブリッジ |
+| `qedschema/migrations/070〜073_*.sql` | runs / candidate_tests / invariance_results / promotion_gate |
+
+---
+
+### P2-2: PBO Parallelization
+
+`multiprocessing` による CPCV 近似の並列化（シリアルフォールバック付き）。
+
+| ファイル | 概要 |
+|----------|------|
+| `analytics/python/frost/frost_worker_pool.py` | `WorkerPoolConfig` / `parallel_map()` |
+| `analytics/python/frost/frost_pbo_parallel.py` | `PBOTask` / `run_pbo_parallel()` / `build_pbo_tasks_from_evaluations()` |
+
+**主要環境変数:** `FROST_PBO_PARALLEL_ENABLED=1`, `FROST_PBO_MAX_WORKERS=4`
+
+---
+
+### FROST v2 スコア式
+
+```
+frost_score_v2
+  = a1*predictive + a2*oos_sharpe + a3*regime_stability
+  + a4*selection_consistency + a5*capacity
+  + a6*genome_novelty + a7*causal_validity + a8*regime_entropy
+  - b1*pbo - b2*turnover - b3*complexity - b4*drawdown
+  - b5v1*fragility
+  - b5v2*fragility_surface - b6*crowding - b7*signal_duplication
+```
+
+| 軸 | デフォルト重み | v2 追加 |
+|----|---------------|---------|
+| `a6` genome_novelty | 0.05 | ✅ |
+| `a7` causal_validity | 0.05 | ✅ |
+| `a8` regime_entropy | 0.05 | ✅ |
+| `b5v2` fragility_surface | 0.02 | ✅ |
+| `b6` crowding | 0.05 | ✅ |
+| `b7` signal_duplication | 0.03 | ✅ |
+
+#### v2 Hard Gate 閾値 (FrostConfig デフォルト)
+
+| Gate | 閾値 |
+|------|------|
+| `min_causal_direction_score` | ≥ 0.60 |
+| `min_invariance_pass_ratio` | ≥ 0.70 |
+| `min_genome_novelty_score` | ≥ 0.20 |
+| `max_crowding_r2` | ≤ 0.80 |
+| `max_fsi` | ≤ 0.40 |
+| `min_regime_entropy` | ≥ 0.60 |
+| `max_signal_corr` | ≤ 0.90 |
+
+#### v2 切り替え
+
+```python
+from frost.frost_config import FrostConfig
+from frost.frost_metrics import compute_scores_for_features_v2
+
+cfg = FrostConfig(use_v2_score=True)
+scores = compute_scores_for_features_v2(feat, config_dict=cfg.to_dict())
+# → scores["frost_score_v2"] に v2 総合スコア
+```
+
+---
+
+### v2 テスト
+
+```bash
+cd /home/user/prostock
+
+# v2 レイヤー単体テスト (58 tests)
+python3 -W ignore -m pytest tests/unit/test_frost_v2_layers.py -v
+
+# 全スイート (312 passed, 24 skipped)
+python3 -W ignore -m pytest tests/ -q --tb=no
+```
+
+---
+
+### v2 改善版追加テーブル一覧
+
+| マイグレーション番号 | テーブル / オブジェクト | レイヤー |
+|---------------------|------------------------|---------|
+| 070 | `causal_runs` | P2-1 |
+| 071 | `causal_candidate_tests` | P2-1 |
+| 072 | `causal_invariance_results` | P2-1 |
+| 073 | `causal_promotion_gate` | P2-1 |
+| 074 | `alpha_genome_profiles` | P1-1 |
+| 075 | `alpha_genome_clusters` | P1-1 |
+| 076 | `alpha_genome_similarity_edges` | P1-1 |
+| 077 | `frost_crowding_scores` | P1-2 |
+| 078 | `frost_fragility_surfaces` | P0-4 |
+| 079 | 複合インデックス群 | P0-5 |
+| 080 | Materialized Views × 3 | P0-5 |
+| 081 | Partitioning 準備テーブル・関数 | P0-5 |
