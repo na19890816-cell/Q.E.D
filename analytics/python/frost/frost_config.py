@@ -98,6 +98,30 @@ class FrostConfig:
     w_diversification: float = 0.05
     """多様化ボーナスの重み。"""
 
+    # ── v2 正方向重み（追加軸）─────────────────────────────────────────────
+    w_genome_novelty: float = 0.05
+    """Genome 新規性スコアの重み (a6)。"""
+
+    w_causal_validity: float = 0.05
+    """因果有効性スコアの重み (a7)。"""
+
+    w_regime_entropy: float = 0.05
+    """レジームエントロピースコアの重み (a8)。"""
+
+    # ── v2 ペナルティ重み（追加軸）──────────────────────────────────────────
+    w_crowding_penalty: float = 0.05
+    """Crowding ペナルティの重み (b6)。"""
+
+    w_signal_duplication_penalty: float = 0.03
+    """シグナル重複ペナルティの重み (b7)。"""
+
+    w_fragility_surface_penalty: float = 0.02
+    """FSI ペナルティの重み（fragility_penalty の v2 版）(b5)。"""
+
+    # ── v2 エンジン切替フラグ ─────────────────────────────────────────────
+    use_v2_score: bool = False
+    """True の場合は compute_frost_score_v2() を使用する。"""
+
     # ── ペナルティ重み (負方向) ───────────────────────────────────────────
     w_turnover_penalty: float = 0.10
     """ターンオーバーペナルティの重み (b2)。"""
@@ -113,6 +137,28 @@ class FrostConfig:
 
     w_pbo_penalty: float = 0.02
     """PBO ペナルティの重み (b1)。"""
+
+    # ── v2 Hard Gate 閾値 ──────────────────────────────────────────────────
+    min_causal_direction_score: float = 0.60
+    """因果方向性スコアの最低値 (v2 hard gate)。"""
+
+    min_invariance_pass_ratio: float = 0.70
+    """不変性通過率の最低値 (v2 hard gate)。"""
+
+    min_genome_novelty_score: float = 0.20
+    """Genome 新規性スコアの最低値 (v2 hard gate)。"""
+
+    max_crowding_r2: float = 0.80
+    """Crowding R² の上限値 (v2 hard gate)。"""
+
+    max_fsi: float = 0.40
+    """Fragility Surface Index の上限値 (v2 hard gate)。"""
+
+    min_regime_entropy: float = 0.60
+    """Regime Entropy の最低値 (v2 hard gate)。"""
+
+    max_signal_corr: float = 0.90
+    """OOS シグナル相関の上限値 (v2 dedup gate)。"""
 
     # ── Hard Gate 閾値 ────────────────────────────────────────────────────
     pbo_threshold: float = 0.20
@@ -205,7 +251,7 @@ class FrostConfig:
         return dsn
 
     def positive_weight_sum(self) -> float:
-        """正方向重みの合計。"""
+        """正方向重みの合計（v1）。"""
         return (
             self.w_predictive
             + self.w_oos_sharpe
@@ -215,14 +261,32 @@ class FrostConfig:
             + self.w_diversification
         )
 
+    def positive_weight_sum_v2(self) -> float:
+        """正方向重みの合計（v2: genome/causal/entropy 追加）。"""
+        return (
+            self.positive_weight_sum()
+            + self.w_genome_novelty
+            + self.w_causal_validity
+            + self.w_regime_entropy
+        )
+
     def penalty_weight_sum(self) -> float:
-        """ペナルティ重みの合計。"""
+        """ペナルティ重みの合計（v1）。"""
         return (
             self.w_turnover_penalty
             + self.w_complexity_penalty
             + self.w_drawdown_penalty
             + self.w_fragility_penalty
             + self.w_pbo_penalty
+        )
+
+    def penalty_weight_sum_v2(self) -> float:
+        """ペナルティ重みの合計（v2: crowding/dedup/fsi 追加）。"""
+        return (
+            self.penalty_weight_sum()
+            + self.w_crowding_penalty
+            + self.w_signal_duplication_penalty
+            + self.w_fragility_surface_penalty
         )
 
     def validate(self) -> None:
@@ -237,11 +301,17 @@ class FrostConfig:
             ("w_selection_consistency", self.w_selection_consistency),
             ("w_capacity", self.w_capacity),
             ("w_diversification", self.w_diversification),
+            ("w_genome_novelty", self.w_genome_novelty),
+            ("w_causal_validity", self.w_causal_validity),
+            ("w_regime_entropy", self.w_regime_entropy),
             ("w_turnover_penalty", self.w_turnover_penalty),
             ("w_complexity_penalty", self.w_complexity_penalty),
             ("w_drawdown_penalty", self.w_drawdown_penalty),
             ("w_fragility_penalty", self.w_fragility_penalty),
             ("w_pbo_penalty", self.w_pbo_penalty),
+            ("w_crowding_penalty", self.w_crowding_penalty),
+            ("w_signal_duplication_penalty", self.w_signal_duplication_penalty),
+            ("w_fragility_surface_penalty", self.w_fragility_surface_penalty),
         ]
         for name, val in weight_fields:
             if val < 0.0:
@@ -286,11 +356,19 @@ class FrostConfig:
                 "selection_consistency": self.w_selection_consistency,
                 "capacity": self.w_capacity,
                 "diversification": self.w_diversification,
+                # v2
+                "genome_novelty": self.w_genome_novelty,
+                "causal_validity": self.w_causal_validity,
+                "regime_entropy": self.w_regime_entropy,
                 "turnover_penalty": self.w_turnover_penalty,
                 "complexity_penalty": self.w_complexity_penalty,
                 "drawdown_penalty": self.w_drawdown_penalty,
                 "fragility_penalty": self.w_fragility_penalty,
                 "pbo_penalty": self.w_pbo_penalty,
+                # v2 penalties
+                "crowding_penalty": self.w_crowding_penalty,
+                "signal_duplication_penalty": self.w_signal_duplication_penalty,
+                "fragility_surface_penalty": self.w_fragility_surface_penalty,
             },
             "hard_gates": {
                 "pbo_threshold": self.pbo_threshold,
@@ -357,6 +435,28 @@ def load_frost_config(overrides: Optional[dict] = None) -> FrostConfig:
         w_drawdown_penalty=_env_float("FROST_W_DRAWDOWN_PENALTY", 0.05),
         w_fragility_penalty=_env_float("FROST_W_FRAGILITY_PENALTY", 0.03),
         w_pbo_penalty=_env_float("FROST_W_PBO_PENALTY", 0.02),
+
+        # ── v2 正方向重み ─────────────────────────────────────────────────
+        w_genome_novelty=_env_float("FROST_W_GENOME_NOVELTY", 0.05),
+        w_causal_validity=_env_float("FROST_W_CAUSAL_VALIDITY", 0.05),
+        w_regime_entropy=_env_float("FROST_W_REGIME_ENTROPY", 0.05),
+
+        # ── v2 ペナルティ重み ─────────────────────────────────────────────
+        w_crowding_penalty=_env_float("FROST_W_CROWDING_PENALTY", 0.05),
+        w_signal_duplication_penalty=_env_float("FROST_W_SIGNAL_DUPLICATION_PENALTY", 0.03),
+        w_fragility_surface_penalty=_env_float("FROST_W_FRAGILITY_SURFACE_PENALTY", 0.02),
+
+        # ── v2 エンジン切り替え ───────────────────────────────────────────
+        use_v2_score=_env_bool("FROST_USE_V2_SCORE", False),
+
+        # ── v2 Hard Gate ──────────────────────────────────────────────────
+        min_causal_direction_score=_env_float("CAUSAL_DIRECTION_MIN_SCORE", 0.60),
+        min_invariance_pass_ratio=_env_float("CAUSAL_INVARIANCE_MIN_PASS_RATIO", 0.70),
+        min_genome_novelty_score=_env_float("ALPHA_GENOME_MIN_NOVELTY_SCORE", 0.20),
+        max_crowding_r2=_env_float("FROST_CROWDING_R2_MAX", 0.80),
+        max_fsi=_env_float("FROST_FSI_MAX", 0.40),
+        min_regime_entropy=_env_float("FROST_REGIME_ENTROPY_MIN", 0.60),
+        max_signal_corr=_env_float("FROST_SIGNAL_CORR_MAX", 0.90),
 
         # ── Hard Gate ─────────────────────────────────────────────────────
         pbo_threshold=_env_float("FROST_PBO_THRESHOLD", 0.20),

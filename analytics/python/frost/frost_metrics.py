@@ -421,3 +421,262 @@ def compute_scores_for_features(
         "drawdown_penalty":     drawdown_pen,
         "fragility_penalty":    fragility_pen,
     }
+
+
+# ---------------------------------------------------------------------------
+# FROST v2 スコア計算
+# ---------------------------------------------------------------------------
+
+def compute_frost_score_v2(
+    # v1 継承: 正スコア軸
+    predictive_score: float,
+    oos_sharpe_score: float,
+    regime_stability_score: float,
+    selection_consistency_score: float,
+    capacity_score: float,
+    # v2 追加: 正スコア軸
+    genome_novelty_score: float = 0.5,
+    causal_validity_score: float = 0.5,
+    regime_entropy_score: float = 0.5,
+    # v1 継承: ペナルティ軸
+    pbo_penalty: float = 0.0,
+    turnover_penalty: float = 0.0,
+    complexity_penalty: float = 0.0,
+    drawdown_penalty: float = 0.0,
+    fragility_penalty: float = 0.0,
+    # v2 追加: ペナルティ軸
+    crowding_penalty: float = 0.0,
+    signal_duplication_penalty: float = 0.0,
+    fragility_surface_penalty: float = 0.0,
+    # 重み: v1 正スコア (a1–a5)
+    w_predictive: float = 0.20,
+    w_oos_sharpe: float = 0.15,
+    w_regime_stability: float = 0.15,
+    w_selection_consistency: float = 0.10,
+    w_capacity: float = 0.10,
+    # 重み: v2 追加正スコア (a6–a8)
+    w_genome_novelty: float = 0.05,
+    w_causal_validity: float = 0.05,
+    w_regime_entropy: float = 0.05,
+    # 重み: v1 ペナルティ (b1–b4)
+    w_pbo: float = 0.10,
+    w_turnover: float = 0.05,
+    w_complexity: float = 0.03,
+    w_drawdown: float = 0.05,
+    # 重み: v1 fragility ペナルティ (b5-v1)
+    w_fragility: float = 0.02,
+    # 重み: v2 追加ペナルティ (b5-v2 / b6 / b7)
+    w_crowding_penalty: float = 0.05,
+    w_signal_duplication_penalty: float = 0.03,
+    w_fragility_surface_penalty: float = 0.02,
+) -> float:
+    """
+    FROST v2 スコア計算。
+
+    式:
+        frost_score_v2
+            = a1*predictive + a2*oos_sharpe + a3*regime_stability
+            + a4*selection_consistency + a5*capacity
+            + a6*genome_novelty + a7*causal_validity + a8*regime_entropy
+            - b1*pbo - b2*turnover - b3*complexity - b4*drawdown
+            - b5v1*fragility
+            - b5v2*fragility_surface - b6*crowding - b7*signal_duplication
+
+    Parameters
+    ----------
+    predictive_score : float
+        予測力スコア (0–1)
+    oos_sharpe_score : float
+        OOS Sharpe スコア (0–1)
+    regime_stability_score : float
+        レジーム安定性スコア (0–1)
+    selection_consistency_score : float
+        選択一貫性スコア (0–1)
+    capacity_score : float
+        容量スコア (0–1)
+    genome_novelty_score : float
+        Genome 新規性スコア (0–1)。デフォルト 0.5 = 中立
+    causal_validity_score : float
+        因果有効性スコア (0–1)。デフォルト 0.5 = 中立
+    regime_entropy_score : float
+        Regime エントロピースコア (0–1)。デフォルト 0.5 = 中立
+    pbo_penalty : float
+        PBO ペナルティ (0–1)
+    turnover_penalty : float
+        ターンオーバーペナルティ (0–1)
+    complexity_penalty : float
+        複雑度ペナルティ (0–1)
+    drawdown_penalty : float
+        ドローダウンペナルティ (0–1)
+    fragility_penalty : float
+        fragility ペナルティ v1 (0–1)
+    crowding_penalty : float
+        混雑ペナルティ (0–1)
+    signal_duplication_penalty : float
+        シグナル重複ペナルティ (0–1)
+    fragility_surface_penalty : float
+        FSI ペナルティ (0–1)
+
+    Returns
+    -------
+    float
+        FROST v2 総合スコア（クランプなし。通常 -1 〜 +1 程度）
+    """
+    # 入力を安全な float に変換
+    def _s(v: Any, d: float = 0.0) -> float:
+        try:
+            f = float(v)
+            return d if (math.isnan(f) or math.isinf(f)) else f
+        except (TypeError, ValueError):
+            return d
+
+    # ── 正方向スコアの加重合計 ─────────────────────────────────────────
+    positive_sum = (
+        _s(w_predictive)            * _s(predictive_score)
+        + _s(w_oos_sharpe)          * _s(oos_sharpe_score)
+        + _s(w_regime_stability)    * _s(regime_stability_score)
+        + _s(w_selection_consistency) * _s(selection_consistency_score)
+        + _s(w_capacity)            * _s(capacity_score)
+        + _s(w_genome_novelty)      * _s(genome_novelty_score, 0.5)
+        + _s(w_causal_validity)     * _s(causal_validity_score, 0.5)
+        + _s(w_regime_entropy)      * _s(regime_entropy_score, 0.5)
+    )
+
+    # ── ペナルティの加重合計 ──────────────────────────────────────────
+    penalty_sum = (
+        _s(w_pbo)                        * _s(pbo_penalty)
+        + _s(w_turnover)                 * _s(turnover_penalty)
+        + _s(w_complexity)               * _s(complexity_penalty)
+        + _s(w_drawdown)                 * _s(drawdown_penalty)
+        + _s(w_fragility)                * _s(fragility_penalty)
+        + _s(w_crowding_penalty)         * _s(crowding_penalty)
+        + _s(w_signal_duplication_penalty) * _s(signal_duplication_penalty)
+        + _s(w_fragility_surface_penalty)  * _s(fragility_surface_penalty)
+    )
+
+    return positive_sum - penalty_sum
+
+
+def compute_scores_for_features_v2(
+    feat: Dict[str, Any],
+    pbo_score: float = 0.0,
+    fold_sharpe_std: float = 0.0,
+    config_dict: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    """
+    1 候補の特徴量辞書から FROST v2 スコア・ペナルティを一括計算する。
+
+    v1 の compute_scores_for_features() を拡張し、以下の v2 追加軸を含む:
+    - genome_novelty_score    (feat["genome_novelty_score"])
+    - causal_validity_score   (feat["causal_validity_score"])
+    - regime_entropy_score    (feat["regime_entropy_score"])
+    - crowding_penalty        (feat["crowding_penalty"])
+    - signal_duplication_penalty (feat["signal_duplication_penalty"])
+    - fragility_surface_penalty  (feat["fragility_surface_penalty"])
+
+    v2 追加キーが feat に存在しない場合はデフォルト中立値を使用する。
+
+    Parameters
+    ----------
+    feat : dict
+        extract_all_features() の戻り値に v2 特徴量を追加したもの
+    pbo_score : float
+        frost_pbo.py が計算した PBO スコア
+    fold_sharpe_std : float
+        frost_stability.py が計算した fold Sharpe 標準偏差
+    config_dict : dict, optional
+        FrostConfig のフィールドを flat dict にしたもの（重み / gate 閾値含む）
+
+    Returns
+    -------
+    dict
+        FrostEvaluation v2 に詰め込む各スコア・ペナルティ値
+    """
+    cfg = config_dict or {}
+    max_turnover = _safe(cfg.get("max_turnover", 4.0))
+    max_drawdown = _safe(cfg.get("max_drawdown", 0.20))
+
+    # ── v1 継承スコア ────────────────────────────────────────────────
+    predictive_score          = compute_predictive_score(feat)
+    oos_sharpe_score          = compute_oos_sharpe_score(feat, cfg.get("min_oos_sharpe", 0.5))
+    regime_stability_score    = compute_regime_stability_score(feat)
+    capacity_score            = compute_capacity_score(feat)
+    selection_consistency_score = _safe(feat.get("selection_consistency_score", 0.5))
+
+    pbo_pen        = compute_pbo_penalty(feat, pbo_score)
+    turnover_pen   = compute_turnover_penalty(feat, max_turnover)
+    complexity_pen = compute_complexity_penalty(_safe(feat.get("complexity_score", 0.0)))
+    drawdown_pen   = compute_drawdown_penalty(feat, max_drawdown)
+    fragility_pen  = compute_fragility_penalty(feat, fold_sharpe_std)
+
+    # ── v2 追加スコア ────────────────────────────────────────────────
+    genome_novelty_score  = _safe(feat.get("genome_novelty_score",  0.5))
+    causal_validity_score = _safe(feat.get("causal_validity_score", 0.5))
+    regime_entropy_score  = _safe(feat.get("regime_entropy_score",  0.5))
+
+    crowding_penalty             = _safe(feat.get("crowding_penalty",              0.0))
+    signal_duplication_penalty   = _safe(feat.get("signal_duplication_penalty",    0.0))
+    fragility_surface_penalty    = _safe(feat.get("fragility_surface_penalty",     0.0))
+
+    # ── 重みを config から取得（デフォルトは FrostConfig デフォルト値）───
+    w = {
+        "w_predictive":                 _safe(cfg.get("w_predictive",                 0.20)),
+        "w_oos_sharpe":                 _safe(cfg.get("w_oos_sharpe",                 0.15)),
+        "w_regime_stability":           _safe(cfg.get("w_regime_stability",           0.15)),
+        "w_selection_consistency":      _safe(cfg.get("w_selection_consistency",      0.10)),
+        "w_capacity":                   _safe(cfg.get("w_capacity",                   0.10)),
+        "w_genome_novelty":             _safe(cfg.get("w_genome_novelty",             0.05)),
+        "w_causal_validity":            _safe(cfg.get("w_causal_validity",            0.05)),
+        "w_regime_entropy":             _safe(cfg.get("w_regime_entropy",             0.05)),
+        "w_pbo":                        _safe(cfg.get("w_pbo",                        0.10)),
+        "w_turnover":                   _safe(cfg.get("w_turnover",                   0.05)),
+        "w_complexity":                 _safe(cfg.get("w_complexity",                 0.03)),
+        "w_drawdown":                   _safe(cfg.get("w_drawdown",                   0.05)),
+        "w_fragility":                  _safe(cfg.get("w_fragility",                  0.02)),
+        "w_crowding_penalty":           _safe(cfg.get("w_crowding_penalty",           0.05)),
+        "w_signal_duplication_penalty": _safe(cfg.get("w_signal_duplication_penalty", 0.03)),
+        "w_fragility_surface_penalty":  _safe(cfg.get("w_fragility_surface_penalty",  0.02)),
+    }
+
+    frost_v2 = compute_frost_score_v2(
+        predictive_score=predictive_score,
+        oos_sharpe_score=oos_sharpe_score,
+        regime_stability_score=regime_stability_score,
+        selection_consistency_score=selection_consistency_score,
+        capacity_score=capacity_score,
+        genome_novelty_score=genome_novelty_score,
+        causal_validity_score=causal_validity_score,
+        regime_entropy_score=regime_entropy_score,
+        pbo_penalty=pbo_pen,
+        turnover_penalty=turnover_pen,
+        complexity_penalty=complexity_pen,
+        drawdown_penalty=drawdown_pen,
+        fragility_penalty=fragility_pen,
+        crowding_penalty=crowding_penalty,
+        signal_duplication_penalty=signal_duplication_penalty,
+        fragility_surface_penalty=fragility_surface_penalty,
+        **w,
+    )
+
+    return {
+        # v1 継承
+        "predictive_score":              predictive_score,
+        "oos_sharpe_score":              oos_sharpe_score,
+        "regime_stability_score":        regime_stability_score,
+        "selection_consistency_score":   selection_consistency_score,
+        "capacity_score":                capacity_score,
+        "pbo_score":                     pbo_pen,
+        "turnover_penalty":              turnover_pen,
+        "complexity_penalty":            complexity_pen,
+        "drawdown_penalty":              drawdown_pen,
+        "fragility_penalty":             fragility_pen,
+        # v2 追加
+        "genome_novelty_score":          genome_novelty_score,
+        "causal_validity_score":         causal_validity_score,
+        "regime_entropy_score":          regime_entropy_score,
+        "crowding_penalty":              crowding_penalty,
+        "signal_duplication_penalty":    signal_duplication_penalty,
+        "fragility_surface_penalty":     fragility_surface_penalty,
+        # v2 総合スコア
+        "frost_score_v2":                frost_v2,
+    }
