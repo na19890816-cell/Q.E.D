@@ -11,12 +11,22 @@ hard gate の合否と SELECTED/HOLD/REJECTED/REVIEW_REQUIRED を決定する。
   - FrostConfig を参照して閾値・重みを取得
   - hard gate は soft score より先に評価 (gate FAIL → 即 REJECTED)
   - frost_score は gate pass 候補のみ意味を持つ
+
+Phase 2 変更:
+  - evaluate_candidate() の内部を evaluate_candidate_to_bundle() +
+    evaluation_from_bundle() に委譲 (D5 負債解消)
+  - 外部 API / 戻り値型は変更なし (完全後方互換)
+  - check_hard_gates() は後方互換のため残すが内部は GateVerdict を利用
 """
 from __future__ import annotations
 
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
+from analytics.python.frost.evidence_bundle import (
+    evaluate_candidate_to_bundle,
+    evaluation_from_bundle,
+)
 from analytics.python.frost.frost_config import FrostConfig
 from analytics.python.frost.frost_contracts import (
     FrostCandidate,
@@ -181,6 +191,10 @@ def evaluate_candidate(
     """
     1 候補を評価して FrostEvaluation を返す。
 
+    Phase 2: 内部を evaluate_candidate_to_bundle() + evaluation_from_bundle()
+    に委譲して D5 (stringly-typed 結合) 負債を解消。
+    外部 API は変更なし (完全後方互換)。
+
     Parameters
     ----------
     candidate : FrostCandidate
@@ -192,140 +206,10 @@ def evaluate_candidate(
     -------
     FrostEvaluation
     """
-    # 特徴量抽出
-    feat = extract_all_features(candidate)
-
-    # PBO 計算
-    pbo_result = compute_pbo_all(candidate.fold_results, config.min_backtest_folds)
-    pbo_score_combined = pbo_result["pbo_score"]
-
-    # 安定性計算
-    fold_sharpes  = feat.get("fold_sharpes", [])
-    fold_ics      = feat.get("fold_ics", [])
-    fold_rank_ics = feat.get("fold_rank_ics", [])
-    regime_sharpes = feat.get("regime_sharpes", [])
-
-    stability = compute_all_stability(
-        fold_sharpes, fold_ics, fold_rank_ics, regime_sharpes,
-        config.min_backtest_folds,
-    )
-    selection_consistency_score = stability["selection_consistency_score"]
-    fold_sharpe_std = stability["fold_sharpe_std"]
-
-    # 個別スコア計算
-    predictive_score = compute_predictive_score(feat)
-    oos_sharpe_score = compute_oos_sharpe_score(feat, config.min_oos_sharpe)
-    regime_stab_score = compute_regime_stability_score(feat)
-    capacity_score    = compute_capacity_score(feat)
-
-    # ペナルティ計算
-    pbo_pen        = compute_pbo_penalty(feat, pbo_score_combined)
-    turnover_pen   = compute_turnover_penalty(feat, config.max_turnover)
-    complexity_pen = compute_complexity_penalty(_safe(feat.get("complexity_score", 0.0)))
-    drawdown_pen   = compute_drawdown_penalty(feat, config.max_drawdown)
-    fragility_pen  = compute_fragility_penalty(feat, fold_sharpe_std)
-
-    # Hard Gate 判定
-    hard_gate_passed, gate_failures = check_hard_gates(
-        feat, pbo_score_combined, selection_consistency_score, config
-    )
-
-    # FROST スコア計算 (gate FAIL でも計算は行う; 判断は selector が行う)
-    frost_score = compute_frost_score(
-        predictive_score=predictive_score,
-        oos_sharpe_score=oos_sharpe_score,
-        regime_stability_score=regime_stab_score,
-        selection_consistency_score=selection_consistency_score,
-        capacity_score=capacity_score,
-        pbo_score=pbo_pen,
-        turnover_penalty=turnover_pen,
-        complexity_penalty=complexity_pen,
-        drawdown_penalty=drawdown_pen,
-        fragility_penalty=fragility_pen,
-        w_predictive=config.w_predictive,
-        w_oos_sharpe=config.w_oos_sharpe,
-        w_regime_stability=config.w_regime_stability,
-        w_selection_consistency=config.w_selection_consistency,
-        w_capacity=config.w_capacity,
-        w_pbo_penalty=config.w_pbo_penalty,
-        w_turnover_penalty=config.w_turnover_penalty,
-        w_complexity_penalty=config.w_complexity_penalty,
-        w_drawdown_penalty=config.w_drawdown_penalty,
-        w_fragility_penalty=config.w_fragility_penalty,
-    )
-
-    # diagnostics 組み立て
-    diagnostics = {
-        "pbo_raw": pbo_result.get("pbo_raw", 0.0),
-        "selection_fragility": pbo_result.get("selection_fragility", 0.0),
-        "fold_sharpe_std": fold_sharpe_std,
-        "fold_sharpe_mean": stability.get("fold_sharpe_mean", 0.0),
-        "fold_ic_mean": stability.get("fold_ic_mean", 0.0),
-        "n_folds": pbo_result.get("n_folds", 0),
-        "gate_failures": gate_failures,
-        "score_breakdown": {
-            "predictive": predictive_score,
-            "oos_sharpe": oos_sharpe_score,
-            "regime_stability": regime_stab_score,
-            "selection_consistency": selection_consistency_score,
-            "capacity": capacity_score,
-            "pbo_penalty": pbo_pen,
-            "turnover_penalty": turnover_pen,
-            "complexity_penalty": complexity_pen,
-            "drawdown_penalty": drawdown_pen,
-            "fragility_penalty": fragility_pen,
-        },
-    }
-
-    return FrostEvaluation(
-        run_id=run_id,
-        candidate_id=candidate.candidate_id,
-        trace_id=trace_id,
-        # 予測力
-        predictive_score=predictive_score,
-        rank_ic=_safe_opt(feat.get("rank_ic")),
-        ic=_safe_opt(feat.get("ic")),
-        ic_t_stat=_safe_opt(feat.get("ic_t_stat")),
-        hit_rate=_safe_opt(feat.get("hit_rate")),
-        # OOS
-        oos_sharpe=_safe_opt(feat.get("oos_sharpe")),
-        oos_sortino=_safe_opt(feat.get("oos_sortino")),
-        oos_calmar=_safe_opt(feat.get("oos_calmar")),
-        oos_max_drawdown=_safe_opt(feat.get("oos_max_drawdown")),
-        # レジーム
-        regime_stability_score=regime_stab_score,
-        regime_pass_ratio=_safe_opt(feat.get("regime_pass_ratio_raw")),
-        crisis_sharpe=_safe_opt(feat.get("crisis_sharpe")),
-        bull_sharpe=_safe_opt(feat.get("bull_sharpe")),
-        # 選抜整合性
-        selection_consistency_score=selection_consistency_score,
-        top_k_stability=stability.get("top_k_stability"),
-        sign_stability=stability.get("sign_stability"),
-        # キャパシティ
-        capacity_score=capacity_score,
-        turnover=_safe_opt(feat.get("turnover")),
-        avg_hold_days=_safe_opt(feat.get("avg_hold_days")),
-        # リスク
-        tail_risk_score=_safe_opt(feat.get("cvar_5")),
-        var_5=_safe_opt(feat.get("var_5")),
-        cvar_5=_safe_opt(feat.get("cvar_5")),
-        downside_vol=_safe_opt(feat.get("downside_vol")),
-        # ペナルティ
-        pbo_score=pbo_pen,
-        turnover_penalty=turnover_pen,
-        complexity_penalty=complexity_pen,
-        drawdown_penalty=drawdown_pen,
-        fragility_penalty=fragility_pen,
-        # 総合
-        frost_score=frost_score,
-        # JSON
-        metrics_json=candidate.metrics,
-        backtest_json=candidate.backtest_summary,
-        regime_json=candidate.regime_breakdown,
-        diagnostics_json=diagnostics,
-        # Gate
-        hard_gate_passed=hard_gate_passed,
-        hard_gate_failures=gate_failures,
+    bundle = evaluate_candidate_to_bundle(candidate, run_id, trace_id, config)
+    return evaluation_from_bundle(
+        bundle,
+        use_v2_score=getattr(config, "use_v2_score", False),
     )
 
 
