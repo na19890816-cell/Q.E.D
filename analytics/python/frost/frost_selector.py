@@ -17,6 +17,11 @@ Phase 2 変更:
     evaluation_from_bundle() に委譲 (D5 負債解消)
   - 外部 API / 戻り値型は変更なし (完全後方互換)
   - check_hard_gates() は後方互換のため残すが内部は GateVerdict を利用
+
+Phase 3 変更:
+  - check_hard_gates() の内部を GateEngine.evaluate_from_dict() に委譲 (D2 負債解消)
+  - GateEngine が v1/v2 全ゲートの単一責任クラスとなる
+  - check_hard_gates() のシグネチャ・戻り値型は変更なし (完全後方互換)
 """
 from __future__ import annotations
 
@@ -27,27 +32,13 @@ from analytics.python.frost.evidence_bundle import (
     evaluate_candidate_to_bundle,
     evaluation_from_bundle,
 )
+from analytics.python.frost.gate_engine import GateEngine
 from analytics.python.frost.frost_config import FrostConfig
 from analytics.python.frost.frost_contracts import (
     FrostCandidate,
     FrostDecision,
     FrostEvaluation,
 )
-from analytics.python.frost.frost_features import extract_all_features
-from analytics.python.frost.frost_metrics import (
-    compute_frost_score,
-    compute_predictive_score,
-    compute_oos_sharpe_score,
-    compute_regime_stability_score,
-    compute_capacity_score,
-    compute_pbo_penalty,
-    compute_turnover_penalty,
-    compute_complexity_penalty,
-    compute_drawdown_penalty,
-    compute_fragility_penalty,
-)
-from analytics.python.frost.frost_pbo import compute_pbo_all
-from analytics.python.frost.frost_stability import compute_all_stability
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +91,9 @@ def check_hard_gates(
     1 つでも FAIL なら (False, [失敗ゲート名リスト]) を返す。
     全 PASS なら (True, []) を返す。
 
+    Phase 3: 内部を GateEngine.evaluate_from_dict() に委譲 (D2 負債解消)。
+    シグネチャ・戻り値型は変更なし (完全後方互換)。
+
     Parameters
     ----------
     feat : dict
@@ -114,68 +108,9 @@ def check_hard_gates(
     -------
     tuple (hard_gate_passed: bool, gate_failures: list of str)
     """
-    failures: List[str] = []
-
-    # Gate 1: PBO
-    if pbo_score > config.pbo_threshold:
-        failures.append(
-            f"pbo={pbo_score:.4f} > threshold={config.pbo_threshold:.4f}"
-        )
-
-    # Gate 2: Rank IC
-    rank_ic = _safe_opt(feat.get("rank_ic"))
-    if rank_ic is not None and abs(rank_ic) < config.min_rank_ic:
-        failures.append(
-            f"rank_ic={rank_ic:.4f} < min={config.min_rank_ic:.4f}"
-        )
-    elif rank_ic is None:
-        # IC が取れない場合はスキップ (警告としては diagnostics_json に残す)
-        pass
-
-    # Gate 3: OOS Sharpe
-    oos_sharpe = _safe_opt(feat.get("oos_sharpe"))
-    if oos_sharpe is not None and oos_sharpe < config.min_oos_sharpe:
-        failures.append(
-            f"oos_sharpe={oos_sharpe:.4f} < min={config.min_oos_sharpe:.4f}"
-        )
-
-    # Gate 4: Turnover
-    turnover = _safe_opt(feat.get("turnover"))
-    if turnover is not None and turnover > config.max_turnover:
-        failures.append(
-            f"turnover={turnover:.2f} > max={config.max_turnover:.2f}"
-        )
-
-    # Gate 5: Max Drawdown
-    oos_mdd = _safe_opt(feat.get("oos_max_drawdown"))
-    if oos_mdd is not None:
-        abs_mdd = abs(oos_mdd)
-        if abs_mdd > config.max_drawdown:
-            failures.append(
-                f"max_drawdown={abs_mdd:.4f} > max={config.max_drawdown:.4f}"
-            )
-
-    # Gate 6: Regime pass ratio
-    regime_pass = _safe_opt(feat.get("regime_pass_ratio_raw"))
-    if regime_pass is not None and regime_pass < config.min_regime_pass_ratio:
-        failures.append(
-            f"regime_pass_ratio={regime_pass:.4f} < min={config.min_regime_pass_ratio:.4f}"
-        )
-
-    # Gate 7: Complexity
-    complexity = _safe(feat.get("complexity_score", 0.0))
-    if complexity > config.max_complexity_score:
-        failures.append(
-            f"complexity={complexity:.4f} > max={config.max_complexity_score:.4f}"
-        )
-
-    # Gate 8: Selection stability
-    if selection_consistency_score < config.min_selection_stability:
-        failures.append(
-            f"selection_stability={selection_consistency_score:.4f} < min={config.min_selection_stability:.4f}"
-        )
-
-    return (len(failures) == 0, failures)
+    return GateEngine.from_config(config).evaluate_from_dict(
+        feat, pbo_score, selection_consistency_score
+    )
 
 
 # ---------------------------------------------------------------------------

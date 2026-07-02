@@ -2,6 +2,7 @@
 evidence_bundle.py
 ------------------
 Phase 2: EvidenceBundle — 型付き境界 (D5 負債解消)
+Phase 3: GateEngine / ScoreEngine への委譲 (D2 / D3 負債解消)
 
 背景 (D5 負債):
   Phase 1 以前は frost_selector.py の evaluate_candidate() が
@@ -9,7 +10,7 @@ Phase 2: EvidenceBundle — 型付き境界 (D5 負債解消)
   stringly-typed な結合になっていた。特徴量 dict のキーミス・型誤りが
   実行時まで検出されず、テストも困難だった。
 
-Phase 2 で解消する方法:
+Phase 2 で解消:
   1. ScoreComponents  — 個別スコア軸の型付きコンテナ
   2. GateVerdict      — Hard Gate の判定結果コンテナ
   3. EvidenceBundle   — 1 候補の全証拠を集約した中間表現
@@ -19,6 +20,11 @@ Phase 2 で解消する方法:
      - stability / pbo 中間結果
   4. evaluate_candidate_to_bundle() — EvidenceBundle を返す純関数
   5. evaluation_from_bundle()       — EvidenceBundle → FrostEvaluation 変換
+
+Phase 3 で解消:
+  - _evaluate_gates() を GateEngine.evaluate() に委譲 (D2: ゲート重複解消)
+  - compute_frost_score/v2 直接呼び出しを ScoreEngine.fill_scores() に委譲 (D3 解消)
+  - _evaluate_gates() は後方互換のためシムとして残す
 
 設計原則:
   - frozen=True にしない (後工程で段階的に埋めるため)
@@ -454,7 +460,7 @@ def evaluate_candidate_to_bundle(
         n_folds=                    pbo_result.get("n_folds", 0),
     )
 
-    # ── Step 4: 個別スコア計算 ────────────────────────────────────────────
+    # ── Step 4: 個別スコア計算 + ScoreEngine 委譲 (Phase 3: D3 解消) ──────
     predictive_score  = compute_predictive_score(feat_dict)
     oos_sharpe_score  = compute_oos_sharpe_score(feat_dict, config.min_oos_sharpe)
     regime_stab_score = compute_regime_stability_score(feat_dict)
@@ -470,58 +476,8 @@ def evaluate_candidate_to_bundle(
         feat_dict, bundle.stability.fold_sharpe_std
     )
 
-    # v1 FROST スコア
-    frost_v1 = compute_frost_score(
-        predictive_score=            predictive_score,
-        oos_sharpe_score=            oos_sharpe_score,
-        regime_stability_score=      regime_stab_score,
-        selection_consistency_score= bundle.stability.selection_consistency_score,
-        capacity_score=              capacity_score,
-        pbo_score=                   pbo_pen,
-        turnover_penalty=            turnover_pen,
-        complexity_penalty=          complexity_pen,
-        drawdown_penalty=            drawdown_pen,
-        fragility_penalty=           fragility_pen,
-        w_predictive=                config.w_predictive,
-        w_oos_sharpe=                config.w_oos_sharpe,
-        w_regime_stability=          config.w_regime_stability,
-        w_selection_consistency=     config.w_selection_consistency,
-        w_capacity=                  config.w_capacity,
-        w_pbo_penalty=               config.w_pbo_penalty,
-        w_turnover_penalty=          config.w_turnover_penalty,
-        w_complexity_penalty=        config.w_complexity_penalty,
-        w_drawdown_penalty=          config.w_drawdown_penalty,
-        w_fragility_penalty=         config.w_fragility_penalty,
-    )
-
-    # v2 FROST スコア (use_v2_score=True の場合のみ計算)
-    frost_v2 = frost_v1  # デフォルトは v1 と同値
-    if getattr(config, "use_v2_score", False):
-        from analytics.python.frost.frost_metrics import compute_frost_score_v2
-        frost_v2 = compute_frost_score_v2(
-            predictive_score=            predictive_score,
-            oos_sharpe_score=            oos_sharpe_score,
-            regime_stability_score=      regime_stab_score,
-            selection_consistency_score= bundle.stability.selection_consistency_score,
-            capacity_score=              capacity_score,
-            pbo_penalty=                 pbo_pen,
-            turnover_penalty=            turnover_pen,
-            complexity_penalty=          complexity_pen,
-            drawdown_penalty=            drawdown_pen,
-            fragility_penalty=           fragility_pen,
-            w_predictive=                config.w_predictive,
-            w_oos_sharpe=                config.w_oos_sharpe,
-            w_regime_stability=          config.w_regime_stability,
-            w_selection_consistency=     config.w_selection_consistency,
-            w_capacity=                  config.w_capacity,
-            w_pbo=                       config.w_pbo_penalty,
-            w_turnover=                  config.w_turnover_penalty,
-            w_complexity=                config.w_complexity_penalty,
-            w_drawdown=                  config.w_drawdown_penalty,
-            w_fragility=                 config.w_fragility_penalty,
-        )
-
-    bundle.scores = ScoreComponents(
+    # ScoreComponents を組み立て (frost_score_v1/v2 は ScoreEngine が設定)
+    raw_scores = ScoreComponents(
         predictive_score=            predictive_score,
         oos_sharpe_score=            oos_sharpe_score,
         regime_stability_score=      regime_stab_score,
@@ -532,20 +488,24 @@ def evaluate_candidate_to_bundle(
         complexity_penalty=          complexity_pen,
         drawdown_penalty=            drawdown_pen,
         fragility_penalty=           fragility_pen,
-        frost_score_v1=              frost_v1,
-        frost_score_v2=              frost_v2,
     )
 
-    # ── Step 5: Hard Gate 判定 ────────────────────────────────────────────
-    bundle.gate = _evaluate_gates(
-        bundle.features, bundle.pbo, bundle.stability, config
+    # Phase 3: ScoreEngine に委譲して frost_score_v1/v2 を設定 (D3 解消)
+    from analytics.python.frost.score_engine import ScoreEngine
+    use_v2 = getattr(config, "use_v2_score", False)
+    bundle.scores = ScoreEngine.from_config(config).fill_scores(raw_scores, use_v2=use_v2)
+
+    # ── Step 5: Hard Gate 判定 (Phase 3: GateEngine に委譲, D2 解消) ─────
+    from analytics.python.frost.gate_engine import GateEngine
+    bundle.gate = GateEngine.from_config(config).evaluate(
+        bundle.features, bundle.pbo, bundle.stability
     )
 
     return bundle
 
 
 # ---------------------------------------------------------------------------
-# _evaluate_gates() — 型付き Gate 判定
+# _evaluate_gates() — 後方互換シム (Phase 3: GateEngine に委譲)
 # ---------------------------------------------------------------------------
 
 def _evaluate_gates(
@@ -557,7 +517,9 @@ def _evaluate_gates(
     """
     全 Hard Gate を評価して GateVerdict を返す。
 
-    v1 ゲート 8 個のみ評価 (v2 ゲートは v2 専用モジュールに委譲)。
+    Phase 3: このシムは後方互換のためにインターフェースを維持するが、
+    内部実装は GateEngine.evaluate() に完全委譲している。
+    直接呼び出しは非推奨。代わりに GateEngine.evaluate() を使用すること。
 
     Parameters
     ----------
@@ -570,82 +532,8 @@ def _evaluate_gates(
     -------
     GateVerdict
     """
-    verdict = GateVerdict.all_pass()
-
-    # Gate 1: PBO
-    if pbo.pbo_score > config.pbo_threshold:
-        verdict.add_failure(
-            "pbo",
-            f"pbo={pbo.pbo_score:.4f} > threshold={config.pbo_threshold:.4f}",
-        )
-        verdict.gate_pbo = False
-
-    # Gate 2: Rank IC
-    rank_ic = features.rank_ic
-    if rank_ic is not None and abs(rank_ic) < config.min_rank_ic:
-        verdict.add_failure(
-            "rank_ic",
-            f"rank_ic={rank_ic:.4f} < min={config.min_rank_ic:.4f}",
-        )
-        verdict.gate_rank_ic = False
-
-    # Gate 3: OOS Sharpe
-    oos_sharpe = features.oos_sharpe
-    if oos_sharpe is not None and oos_sharpe < config.min_oos_sharpe:
-        verdict.add_failure(
-            "oos_sharpe",
-            f"oos_sharpe={oos_sharpe:.4f} < min={config.min_oos_sharpe:.4f}",
-        )
-        verdict.gate_oos_sharpe = False
-
-    # Gate 4: Turnover
-    turnover = features.turnover
-    if turnover is not None and turnover > config.max_turnover:
-        verdict.add_failure(
-            "turnover",
-            f"turnover={turnover:.2f} > max={config.max_turnover:.2f}",
-        )
-        verdict.gate_turnover = False
-
-    # Gate 5: Max Drawdown
-    oos_mdd = features.oos_max_drawdown
-    if oos_mdd is not None:
-        abs_mdd = abs(oos_mdd)
-        if abs_mdd > config.max_drawdown:
-            verdict.add_failure(
-                "max_drawdown",
-                f"max_drawdown={abs_mdd:.4f} > max={config.max_drawdown:.4f}",
-            )
-            verdict.gate_max_drawdown = False
-
-    # Gate 6: Regime pass ratio
-    regime_pass = features.regime_pass_ratio_raw
-    if regime_pass is not None and regime_pass < config.min_regime_pass_ratio:
-        verdict.add_failure(
-            "regime_pass_ratio",
-            f"regime_pass_ratio={regime_pass:.4f} < min={config.min_regime_pass_ratio:.4f}",
-        )
-        verdict.gate_regime_pass_ratio = False
-
-    # Gate 7: Complexity
-    complexity = features.complexity_score
-    if complexity > config.max_complexity_score:
-        verdict.add_failure(
-            "complexity",
-            f"complexity={complexity:.4f} > max={config.max_complexity_score:.4f}",
-        )
-        verdict.gate_complexity = False
-
-    # Gate 8: Selection stability
-    if stability.selection_consistency_score < config.min_selection_stability:
-        verdict.add_failure(
-            "selection_stability",
-            f"selection_stability={stability.selection_consistency_score:.4f} "
-            f"< min={config.min_selection_stability:.4f}",
-        )
-        verdict.gate_selection_stability = False
-
-    return verdict
+    from analytics.python.frost.gate_engine import GateEngine
+    return GateEngine.from_config(config).evaluate(features, pbo, stability)
 
 
 # ---------------------------------------------------------------------------
