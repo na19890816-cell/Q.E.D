@@ -21,8 +21,6 @@ FROST テーブル群への UPSERT IO 層。
 """
 from __future__ import annotations
 
-import json
-import math
 from typing import Any, List, Optional
 
 import psycopg
@@ -35,42 +33,12 @@ from analytics.python.frost.frost_contracts import (
     FrostRunOutput,
 )
 
-
-# ---------------------------------------------------------------------------
-# NaN/Inf サニタイズ ユーティリティ
-# ---------------------------------------------------------------------------
-
-def _safe_float(v: Any) -> float:
-    """NaN / Inf を 0.0 に変換。PostgreSQL NUMERIC 列へ安全に渡す。"""
-    try:
-        f = float(v)
-        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _safe_float_opt(v: Any) -> Optional[float]:
-    """NaN / Inf を None に変換。NULL 許容列向け。"""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if (math.isnan(f) or math.isinf(f)) else f
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_json(obj: Any) -> str:
-    """NaN/Inf を None に変換してから JSON シリアライズ。JSONB 列向け。"""
-    def _sanitize(v: Any) -> Any:
-        if isinstance(v, float):
-            return None if (math.isnan(v) or math.isinf(v)) else v
-        if isinstance(v, dict):
-            return {k: _sanitize(vv) for k, vv in v.items()}
-        if isinstance(v, list):
-            return [_sanitize(x) for x in v]
-        return v
-    return json.dumps(_sanitize(obj), default=str)
+# Phase 6: D6 負債解消 — サニタイズ ユーティリティを base_writer に一元化
+from analytics.python.pg_io.base_writer import (
+    safe_float as _safe_float,
+    safe_float_opt as _safe_float_opt,
+    safe_json as _safe_json,
+)
 
 
 # ---------------------------------------------------------------------------

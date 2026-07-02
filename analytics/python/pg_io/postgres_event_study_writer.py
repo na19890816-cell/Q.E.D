@@ -20,6 +20,9 @@ from typing import Any
 import psycopg
 from psycopg import Connection
 
+# Phase 6: D6 負債解消 — 共通ユーティリティ / BaseWriter 継承
+from analytics.python.pg_io.base_writer import BaseWriter
+
 logger = logging.getLogger(__name__)
 
 # DuckDB panel に期待する必須列
@@ -41,7 +44,7 @@ def _make_trace_id(namespace: str, run_id: str) -> str:
     return str(uuid.uuid5(ns, run_id))
 
 
-class EventStudyWriter:
+class EventStudyWriter(BaseWriter):
     """
     DuckDB panel → PostgreSQL の書き戻し担当。
     """
@@ -56,15 +59,15 @@ class EventStudyWriter:
         trace_namespace: str | None = None,
         dry_run: bool = False,
     ) -> None:
-        self.conn = conn
+        _dry_run = dry_run or (
+            os.environ.get("EVENT_STUDY_WRITEBACK_DRY_RUN", "false").lower() == "true"
+        )
+        super().__init__(conn, dry_run=_dry_run, writer_name="EventStudyWriter")
         self.source_name = source_name or os.environ.get("EVENT_STUDY_SOURCE_NAME", "event_study_v1")
         self.panel_kind = panel_kind or os.environ.get("EVENT_STUDY_PANEL_KIND", "abnormal_return")
         self.batch_label = batch_label or os.environ.get("EVENT_STUDY_BATCH_LABEL", "batch_default")
         self.trace_namespace = trace_namespace or os.environ.get(
             "EVENT_STUDY_TRACE_NAMESPACE", "event_study"
-        )
-        self.dry_run = dry_run or (
-            os.environ.get("EVENT_STUDY_WRITEBACK_DRY_RUN", "false").lower() == "true"
         )
         self.run_id = _build_run_id(self.source_name, self.batch_label)
         self.trace_id = _make_trace_id(self.trace_namespace, self.run_id)
@@ -89,8 +92,7 @@ class EventStudyWriter:
             "trace_namespace": self.trace_namespace,
         })
 
-        if self.dry_run:
-            logger.info("[DRY_RUN] upsert_run skipped: run_id=%s", self.run_id)
+        if self._guard_dry_run(f"upsert_run run_id={self.run_id}"):
             return self.run_id
 
         with self.conn.cursor() as cur:
@@ -131,8 +133,7 @@ class EventStudyWriter:
                 f"実際の列: {list(df.columns)}"
             )
 
-        if self.dry_run:
-            logger.info("[DRY_RUN] upsert_summaries_from_df skipped: rows=%d", len(df))
+        if self._guard_dry_run(f"upsert_summaries_from_df rows={len(df)}"):
             return 0
 
         count = 0
@@ -209,8 +210,7 @@ class EventStudyWriter:
 
     def complete_run(self, total_events: int) -> None:
         """run を completed に更新する。"""
-        if self.dry_run:
-            logger.info("[DRY_RUN] complete_run skipped")
+        if self._guard_dry_run("complete_run"):
             return
         with self.conn.cursor() as cur:
             cur.execute(

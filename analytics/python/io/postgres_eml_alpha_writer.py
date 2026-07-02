@@ -8,41 +8,16 @@ EML alpha run / candidate を PostgreSQL へ UPSERT する IO 層。
 from __future__ import annotations
 
 import json
-import math
 from typing import Any, List
 
 import psycopg
 from psycopg.sql import SQL, Identifier
 
-
-# ------------------------------------------------------------------ #
-# NaN/Inf サニタイズ ユーティリティ
-# ------------------------------------------------------------------ #
-
-def _safe_float(v: Any) -> float:
-    """NaN / Inf を 0.0 に変換。"""
-    try:
-        f = float(v)
-        if math.isnan(f) or math.isinf(f):
-            return 0.0
-        return f
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _safe_json(obj: Any) -> str:
-    """NaN/Inf を JSON セーフ値に変換してシリアライズ。"""
-    def _sanitize(v: Any) -> Any:
-        if isinstance(v, float):
-            if math.isnan(v) or math.isinf(v):
-                return None
-            return v
-        if isinstance(v, dict):
-            return {k: _sanitize(vv) for k, vv in v.items()}
-        if isinstance(v, list):
-            return [_sanitize(x) for x in v]
-        return v
-    return json.dumps(_sanitize(obj))
+# Phase 6: D6 負債解消 — サニタイズ ユーティリティを base_writer に一元化
+from analytics.python.pg_io.base_writer import (
+    safe_float as _safe_float,
+    safe_json as _safe_json,
+)
 
 from analytics.python.alpha.eml.eml_search import EMLCandidate
 from analytics.python.alpha.eml.eml_master_formula import EMLDiscoveryOutput

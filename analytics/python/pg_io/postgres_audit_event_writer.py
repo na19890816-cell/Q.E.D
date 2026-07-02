@@ -18,6 +18,8 @@ from typing import Any
 import psycopg
 from psycopg import Connection
 
+# Phase 6: D6 負債解消 — 共通ユーティリティ / BaseWriter 継承
+from analytics.python.pg_io.base_writer import BaseWriter
 from .postgres_conn import check_table_columns, table_exists
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ _AUDIT_EVENTS_CORE_COLS = {
 }
 
 
-class AuditEventWriter:
+class AuditEventWriter(BaseWriter):
     """
     QED audit_events + event_study_pipeline_audit への書き込み担当。
     """
@@ -43,7 +45,7 @@ class AuditEventWriter:
         pipeline_audit_table: str = "event_study_pipeline_audit",
         strict: bool = False,
     ) -> None:
-        self.conn = conn
+        super().__init__(conn, writer_name="AuditEventWriter")
         self.audit_schema = audit_schema or os.environ.get("AUDIT_EVENTS_SCHEMA", "public")
         self.audit_table = audit_table or os.environ.get("AUDIT_EVENTS_TABLE", "audit_events")
         self.pipeline_audit_table = pipeline_audit_table

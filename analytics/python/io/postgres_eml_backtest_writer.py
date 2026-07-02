@@ -19,7 +19,6 @@ postgres_eml_backtest_writer.py
 from __future__ import annotations
 
 import json
-import math
 import os
 from typing import Any, List
 
@@ -28,32 +27,14 @@ from psycopg.sql import SQL, Identifier
 
 from analytics.python.backtest.harness import BacktestRunResult, FoldResult
 
+# Phase 6: D6 負債解消 — サニタイズ ユーティリティを base_writer に一元化
+from analytics.python.pg_io.base_writer import (
+    safe_float_opt as _sf,
+    safe_json as _safe_json,
+)
 
-# ------------------------------------------------------------------ #
-# NaN/Inf サニタイズ
-# ------------------------------------------------------------------ #
-
-def _sf(v: Any) -> Any:
-    """NaN / Inf を None に変換 (PostgreSQL numeric 互換)。"""
-    try:
-        f = float(v)
-        if math.isnan(f) or math.isinf(f):
-            return None
-        return f
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_json(obj: Any) -> str:
-    def _s(v: Any) -> Any:
-        if isinstance(v, float):
-            return None if (math.isnan(v) or math.isinf(v)) else v
-        if isinstance(v, dict):
-            return {k: _s(vv) for k, vv in v.items()}
-        if isinstance(v, list):
-            return [_s(x) for x in v]
-        return v
-    return json.dumps(_s(obj))
+# _sf は 「変換不能 → None」なので eml_backtest の _sf と混同しないようエイリアスを統一
+# 旧 _sf(v) -> None と完全互換なので軽量ラッパー不要
 
 
 # ------------------------------------------------------------------ #

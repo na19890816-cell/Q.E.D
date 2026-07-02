@@ -18,8 +18,6 @@ Q.E.D. の promotion chain に橋渡しする。
 """
 from __future__ import annotations
 
-import json
-import math
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -34,27 +32,11 @@ from analytics.python.frost.frost_contracts import (
     FrostRunOutput,
 )
 
-
-# ---------------------------------------------------------------------------
-# ユーティリティ
-# ---------------------------------------------------------------------------
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _safe_json(obj: Any) -> str:
-    def _sanitize(v: Any) -> Any:
-        if isinstance(v, float):
-            return None if (math.isnan(v) or math.isinf(v)) else v
-        if isinstance(v, dict):
-            return {k: _sanitize(vv) for k, vv in v.items()}
-        if isinstance(v, list):
-            return [_sanitize(x) for x in v]
-        if isinstance(v, datetime):
-            return v.isoformat()
-        return v
-    return json.dumps(_sanitize(obj), default=str)
+# Phase 6: D6 負債解消 — サニタイズ / 時刻ユーティリティを base_writer に一元化
+from analytics.python.pg_io.base_writer import (
+    safe_json as _safe_json,
+    now_utc as _now,
+)
 
 
 # ---------------------------------------------------------------------------
