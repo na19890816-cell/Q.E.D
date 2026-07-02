@@ -5,7 +5,7 @@ FROST ランキング・多様化集約モジュール。
 
 複数候補の FrostEvaluation を受け取り:
 1. frost_score 降順でランキングを付ける
-2. near-duplicate を検出して抑制する
+2. near-duplicate を検出して抑制する  ← Phase 4: DedupStage に移管
 3. diversification-aware な top-k 選抜を行う
 4. 同一 source family の過集中を制限する
 
@@ -13,6 +13,11 @@ FROST ランキング・多様化集約モジュール。
   - 副作用なし
   - FrostConfig を参照
   - FrostDecision.decision_rank を更新して返す
+
+Phase 4 変更:
+  detect_near_duplicates() → DedupStage.detect_structural() に委譲
+  select_diverse_top_k()   → detect_near_duplicates() 呼び出しを委譲経由に統一
+  _hash_similarity() / _formula_similarity() は DedupStage 内部に移管 (ここでは削除)
 """
 from __future__ import annotations
 
@@ -71,48 +76,8 @@ def rank_evaluations(
 
 
 # ---------------------------------------------------------------------------
-# Near-duplicate 検出
+# Near-duplicate 検出  (Phase 4: DedupStage に委譲)
 # ---------------------------------------------------------------------------
-
-def _hash_similarity(hash1: str, hash2: str) -> float:
-    """
-    2 つの candidate_hash の類似度を返す (0〜1)。
-
-    同一 hash → 1.0。
-    異なる hash → 共通プレフィックス長に基づく簡易類似度。
-    """
-    if hash1 == hash2:
-        return 1.0
-    if not hash1 or not hash2:
-        return 0.0
-
-    # 共通プレフィックス長 / 最大長
-    max_len = max(len(hash1), len(hash2))
-    common = 0
-    for c1, c2 in zip(hash1, hash2):
-        if c1 == c2:
-            common += 1
-        else:
-            break
-    return common / max_len
-
-
-def _formula_similarity(formula1: Optional[str], formula2: Optional[str]) -> float:
-    """
-    2 つの formula_text の簡易類似度 (Jaccard on tokens)。
-    """
-    if not formula1 or not formula2:
-        return 0.0
-    if formula1 == formula2:
-        return 1.0
-
-    tokens1 = set(formula1.replace("(", " ").replace(")", " ").split())
-    tokens2 = set(formula2.replace("(", " ").replace(")", " ").split())
-    union = len(tokens1 | tokens2)
-    if union == 0:
-        return 0.0
-    return len(tokens1 & tokens2) / union
-
 
 def detect_near_duplicates(
     candidates: List[FrostCandidate],
@@ -121,39 +86,19 @@ def detect_near_duplicates(
     """
     候補間の near-duplicate を検出する。
 
+    Phase 4: 内部を DedupStage.detect_structural() に委譲 (D4 負債解消)。
+
     Returns
     -------
     dict: {suppressed_candidate_id: dominant_candidate_id or None}
         抑制対象の candidate_id → 支配候補の candidate_id
         重複なしの候補はキーに含まない
     """
-    n = len(candidates)
-    suppressed: Dict[str, Optional[str]] = {}
-
-    for i in range(n):
-        if candidates[i].candidate_id in suppressed:
-            continue  # 既に抑制済み
-        for j in range(i + 1, n):
-            if candidates[j].candidate_id in suppressed:
-                continue
-
-            c1, c2 = candidates[i], candidates[j]
-
-            # hash 類似度
-            hash_sim = _hash_similarity(c1.candidate_hash, c2.candidate_hash)
-
-            # formula 類似度 (hash < threshold の場合に追加チェック)
-            if hash_sim < threshold:
-                formula_sim = _formula_similarity(c1.formula_text, c2.formula_text)
-                similarity = max(hash_sim, formula_sim)
-            else:
-                similarity = hash_sim
-
-            if similarity >= threshold:
-                # c2 を抑制 (c1 が先に登場したので c1 が dominant)
-                suppressed[c2.candidate_id] = c1.candidate_id
-
-    return suppressed
+    from analytics.python.frost.dedup_stage import DedupStage
+    result = DedupStage(structural_threshold=threshold).detect_structural(
+        candidates, threshold=threshold
+    )
+    return result.suppressed
 
 
 # ---------------------------------------------------------------------------
