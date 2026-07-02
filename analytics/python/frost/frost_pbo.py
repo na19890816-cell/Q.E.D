@@ -8,7 +8,7 @@ CPCV 近似) によって推定する。
 
 設計原則:
   - 副作用なし
-  - numpy 不使用 (標準ライブラリ + math のみ)
+  - Phase 7 numpy 化 (ADR-001 対象): statistics.median → np.median
   - PBO 近似: fold 間の Sharpe ランクを用いた簡易推定
   - 「最良 IS fold を選んだ時に OOS でも最良か」の確率を測る
   - 返り値は frost_score に組み込むペナルティとして使用
@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import itertools
 import math
-import statistics
 from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ def estimate_pbo_from_folds(
         # 同じ fold の OOS Sharpe を取得
         # (簡易近似: IS と OOS は同じ fold 集合から取るため、
         #  best IS fold の値を OOS でも「評価」する)
-        oos_median = statistics.median(oos_sharpes)
+        oos_median = float(np.median(oos_sharpes))
 
         # best IS fold の Sharpe が OOS 中央値を下回れば overfitting
         # (この fold が OOS でも "best" かどうかを判定)

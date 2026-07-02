@@ -3,21 +3,22 @@ alpha_genome_cluster.py
 -----------------------
 GenomeVector のクラスタリングモジュール。
 
-k-means（pure Python 実装）で Genome 空間を因子グループに分類し、
+k-means（numpy 化実装）で Genome 空間を因子グループに分類し、
 近似因子の塊を可視化・管理する。
 
 設計原則:
-  - pure Python（numpy不使用）
-  - K-Means（Lloyd アルゴリズム）の軽量実装
+  - Phase 7 numpy 化 (ADR-001 対象): _l2_dist/_cosine_sim/_mean_vector/K-Means Assignment
+  - K-Means（Lloyd アルゴリズム）— 距離行列を numpy ブロードキャストで一括計算
   - 環境変数: ALPHA_GENOME_CLUSTERING=1
 """
 from __future__ import annotations
 
-import math
 import os
 import random
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 
 from .alpha_genome_encoder import GENOME_AXES, GENOME_DIM, GenomeVector
 
@@ -100,28 +101,28 @@ def _vec_to_list(v: Dict[str, float]) -> List[float]:
 
 
 def _l2_dist(v1: List[float], v2: List[float]) -> float:
-    return math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
+    """L2 距離（後方互換シム — 内部は numpy）。"""
+    a = np.array(v1, dtype=np.float64)
+    b = np.array(v2, dtype=np.float64)
+    return float(np.linalg.norm(a - b))
 
 
 def _cosine_sim(v1: List[float], v2: List[float]) -> float:
-    dot = sum(a * b for a, b in zip(v1, v2))
-    n1 = math.sqrt(sum(a * a for a in v1))
-    n2 = math.sqrt(sum(b * b for b in v2))
+    """コサイン類似度（後方互換シム — 内部は numpy）。"""
+    a = np.array(v1, dtype=np.float64)
+    b = np.array(v2, dtype=np.float64)
+    n1 = np.linalg.norm(a)
+    n2 = np.linalg.norm(b)
     if n1 < 1e-15 or n2 < 1e-15:
         return 0.0
-    return min(1.0, dot / (n1 * n2))
+    return float(min(1.0, np.dot(a, b) / (n1 * n2)))
 
 
 def _mean_vector(vectors: List[List[float]]) -> List[float]:
-    """ベクトルリストの平均を計算する。"""
+    """ベクトルリストの平均を計算する（後方互換シム — 内部は numpy）。"""
     if not vectors:
         return [0.0] * GENOME_DIM
-    n = len(vectors)
-    mean = [0.0] * GENOME_DIM
-    for v in vectors:
-        for i, val in enumerate(v):
-            mean[i] += val / n
-    return mean
+    return np.array(vectors, dtype=np.float64).mean(axis=0).tolist()
 
 
 def _normalize(v: List[float]) -> List[float]:
@@ -176,36 +177,33 @@ def cluster_genomes(
     converged = False
     n_iter = 0
 
+    # numpy 行列変換（Assignment ステップの高速化）
+    vec_mat = np.array(vectors, dtype=np.float64)  # (N, D)
+
     for iteration in range(max_iter):
         n_iter = iteration + 1
 
-        # Assignment ステップ
-        new_assignment: List[int] = []
-        for vec in vectors:
-            best_c = 0
-            best_dist = float("inf")
-            for ci, centroid in enumerate(centroids):
-                d = _l2_dist(vec, centroid)
-                if d < best_dist:
-                    best_dist = d
-                    best_c = ci
-            new_assignment.append(best_c)
+        # Assignment ステップ — ブロードキャスト距離行列 (N, k)
+        cent_mat = np.array(centroids, dtype=np.float64)  # (k, D)
+        # diff: (N, k, D) → 各点と各重心の差
+        diff = vec_mat[:, np.newaxis, :] - cent_mat[np.newaxis, :, :]  # (N, k, D)
+        dists = np.sqrt(np.sum(diff ** 2, axis=2))  # (N, k)
+        new_assignment: List[int] = np.argmin(dists, axis=1).tolist()
 
         # Update ステップ
         new_centroids: List[List[float]] = []
         for ci in range(k):
-            members = [vectors[i] for i, c in enumerate(new_assignment) if c == ci]
-            if members:
-                new_centroids.append(_mean_vector(members))
+            mask = np.array(new_assignment) == ci
+            if mask.any():
+                new_centroids.append(vec_mat[mask].mean(axis=0).tolist())
             else:
                 # 空クラスター → ランダム再初期化
                 new_centroids.append(vectors[rng.randint(0, n - 1)])
 
         # 収束チェック
-        max_centroid_shift = max(
-            _l2_dist(c_old, c_new)
-            for c_old, c_new in zip(centroids, new_centroids)
-        )
+        old_cent = np.array(centroids, dtype=np.float64)
+        new_cent = np.array(new_centroids, dtype=np.float64)
+        max_centroid_shift = float(np.max(np.linalg.norm(new_cent - old_cent, axis=1)))
         assignment = new_assignment
         centroids = new_centroids
 
@@ -235,11 +233,11 @@ def cluster_genomes(
             intra_cluster_avg_sim=intra_sim,
         ))
 
-    # 慣性（inertia）計算
-    inertia = sum(
-        _l2_dist(vectors[i], centroids[assignment[i]]) ** 2
-        for i in range(n)
-    )
+    # 慣性（inertia）計算 — numpy 一括
+    cent_mat_final = np.array(centroids, dtype=np.float64)  # (k, D)
+    assign_arr = np.array(assignment, dtype=np.int64)        # (N,)
+    assigned_cents = cent_mat_final[assign_arr]              # (N, D)
+    inertia = float(np.sum(np.sum((vec_mat - assigned_cents) ** 2, axis=1)))
 
     return ClusteringResult(
         clusters=clusters,
@@ -286,16 +284,19 @@ def _kmeans_plus_plus_init(
 
 
 def _intra_cluster_avg_similarity(member_vecs: List[List[float]]) -> float:
-    """クラスター内の全ペアのコサイン類似度平均を計算する。"""
+    """クラスター内の全ペアのコサイン類似度平均を計算する（numpy 一括）。"""
     n = len(member_vecs)
     if n < 2:
         return 1.0 if n == 1 else 0.0
 
-    total_sim = 0.0
-    count = 0
-    for i in range(n):
-        for j in range(i + 1, n):
-            total_sim += _cosine_sim(member_vecs[i], member_vecs[j])
-            count += 1
+    mat = np.array(member_vecs, dtype=np.float64)  # (n, D)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)  # (n, 1)
+    norms = np.where(norms < 1e-15, 1.0, norms)
+    normed = mat / norms  # (n, D)
+    cos_mat = normed @ normed.T  # (n, n)
+    cos_mat = np.clip(cos_mat, 0.0, 1.0)
 
-    return total_sim / count if count > 0 else 0.0
+    # 上三角（対角除く）の平均
+    i_idx, j_idx = np.triu_indices(n, k=1)
+    count = len(i_idx)
+    return float(cos_mat[i_idx, j_idx].sum() / count) if count > 0 else 0.0

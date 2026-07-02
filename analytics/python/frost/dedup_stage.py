@@ -10,7 +10,7 @@ Phase 4 で新設。以前は以下の 2 箇所に散在していた排除ロジ
 設計原則
 --------
 - 副作用なし (pure function / dataclass メソッド)
-- pure Python 制約 (numpy 不使用)
+- Phase 7 numpy 化 (ADR-001 対象): _pearson / compute_correlation_matrix
 - 後方互換: frost_signal_dedup / frost_ranker の公開 API シグネチャを変えない
 - NaN / Inf セーフ
 - FROST_SIGNAL_DEDUP_ENABLED=0 でシグナル dedup をスキップ
@@ -37,11 +37,11 @@ DedupRunResult
 """
 from __future__ import annotations
 
-import math
 import os
-import statistics
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+import numpy as np
 
 # --------------------------------------------------------------------------- #
 # 環境変数
@@ -56,36 +56,39 @@ _CORR_MAX: float = float(os.environ.get("FROST_SIGNAL_CORR_MAX", "0.90"))
 # --------------------------------------------------------------------------- #
 
 def _safe(v: Any, default: float = 0.0) -> float:
-    """NaN / Inf / 非数値を default に変換する。"""
+    """NaN / Inf / 非数値を default に変換する（後方互換シム）。"""
     try:
         f = float(v)
-        return default if (math.isnan(f) or math.isinf(f)) else f
+        return default if not np.isfinite(f) else f
     except (TypeError, ValueError):
         return default
 
 
 # --------------------------------------------------------------------------- #
-# 相関演算ヘルパー (pure Python)
+# 相関演算ヘルパー (numpy 版 — Phase 7 高速化)
 # --------------------------------------------------------------------------- #
 
 def _pearson(xs: List[float], ys: List[float]) -> float:
-    """ピアソン相関係数。計算不能なら 0.0 を返す。"""
+    """ピアソン相関係数。計算不能なら 0.0 を返す。
+
+    Phase 7 numpy 化: statistics.mean() の Fraction 演算オーバーヘッドを除去し
+    np.corrcoef に置換。NaN/Inf は 0.0 で置換してから計算する。
+    """
     n = len(xs)
     if n < 3:
         return 0.0
-    xs = [_safe(v) for v in xs]
-    ys = [_safe(v) for v in ys]
-    try:
-        mx = statistics.mean(xs)
-        my = statistics.mean(ys)
-        num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
-        dx = math.sqrt(sum((x - mx) ** 2 for x in xs))
-        dy = math.sqrt(sum((y - my) ** 2 for y in ys))
-        if dx < 1e-10 or dy < 1e-10:
-            return 0.0
-        return max(-1.0, min(1.0, num / (dx * dy)))
-    except (ZeroDivisionError, ValueError, statistics.StatisticsError):
+    a = np.array(xs, dtype=np.float64)
+    b = np.array(ys, dtype=np.float64)
+    # NaN / Inf → 0.0
+    a = np.where(np.isfinite(a), a, 0.0)
+    b = np.where(np.isfinite(b), b, 0.0)
+    # 標準偏差ゼロ → 相関不定
+    if a.std() < 1e-10 or b.std() < 1e-10:
         return 0.0
+    r = np.corrcoef(a, b)[0, 1]
+    if not np.isfinite(r):
+        return 0.0
+    return float(np.clip(r, -1.0, 1.0))
 
 
 # --------------------------------------------------------------------------- #
@@ -293,17 +296,45 @@ class DedupStage:
 
         frost_signal_dedup.compute_signal_correlation_matrix() の移管先。
 
+        Phase 7 numpy 化: 全候補を (N, T) 行列に積み上げ np.corrcoef で
+        一括計算することで O(N^2 * T) の純 Python ループを除去する。
+
         Returns
         -------
         {(id_a, id_b): correlation}  (id_a < id_b の上三角のみ)
         """
         ids = sorted(signal_matrix.keys())
+        n = len(ids)
         result: Dict[Tuple[str, str], float] = {}
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                a, b = ids[i], ids[j]
-                corr = _pearson(signal_matrix[a], signal_matrix[b])
-                result[(a, b)] = corr
+        if n < 2:
+            return result
+
+        # 全シグナルを行列化（各行 = 1候補の時系列）
+        # 長さが異なる場合は共通長の短い方に truncate して個別 _pearson を呼ぶ
+        lengths = [len(signal_matrix[i]) for i in ids]
+        common_len = min(lengths)
+
+        if len(set(lengths)) == 1 and common_len >= 3:
+            # 全候補が同じ長さ → numpy 一括計算
+            mat = np.array(
+                [signal_matrix[i] for i in ids], dtype=np.float64
+            )
+            # NaN/Inf → 0.0
+            mat = np.where(np.isfinite(mat), mat, 0.0)
+            corr = np.corrcoef(mat)  # (N, N)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    r = corr[i, j]
+                    result[(ids[i], ids[j])] = (
+                        float(np.clip(r, -1.0, 1.0)) if np.isfinite(r) else 0.0
+                    )
+        else:
+            # 長さ不一致 → ペアごとに _pearson（後方互換）
+            for i in range(n):
+                for j in range(i + 1, n):
+                    a, b = ids[i], ids[j]
+                    result[(a, b)] = _pearson(signal_matrix[a], signal_matrix[b])
+
         return result
 
     @staticmethod

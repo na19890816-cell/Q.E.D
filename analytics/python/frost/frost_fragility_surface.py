@@ -7,7 +7,7 @@ frost_surface_sampler.py が生成したサンプル点に対して
 評価関数を適用し、パフォーマンス変動の「局所安定曲面スコア」を算出する。
 
 設計原則:
-  - pure Python（numpy不使用）
+  - Phase 7 numpy 化 (ADR-001 対象): statistics.mean/pstdev → numpy
   - コールバック方式: 評価関数は呼び出し元が差し込む
   - 1値 fragility_score の代替として「曲面」的なスコアを提供
   - 副作用なし
@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import math
 import os
-import statistics
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
 
 from .frost_surface_sampler import (
     PerturbationGrid,
@@ -258,10 +259,11 @@ def compute_fragility_surface(
         return _trivial_result(baseline_sharpe, baseline_rank_ic, len(valid_evals), n_invalid, fsi_max)
 
     sharpe_vals = [e.sharpe for e in non_baseline]
-    mean_sharpe = statistics.mean(sharpe_vals)
-    std_sharpe = statistics.pstdev(sharpe_vals) if len(sharpe_vals) > 1 else 0.0
-    min_sharpe = min(sharpe_vals)
-    max_sharpe = max(sharpe_vals)
+    sharpe_arr = np.array(sharpe_vals, dtype=np.float64)
+    mean_sharpe = float(sharpe_arr.mean())
+    std_sharpe = float(sharpe_arr.std()) if len(sharpe_vals) > 1 else 0.0
+    min_sharpe = float(sharpe_arr.min())
+    max_sharpe = float(sharpe_arr.max())
 
     # 変動係数（低いほど安定）
     cv_sharpe = std_sharpe / abs(mean_sharpe) if abs(mean_sharpe) > 1e-10 else std_sharpe
@@ -360,7 +362,7 @@ def _compute_param_breakdown(
             continue
 
         # 各パラメータ値での平均 Sharpe
-        mean_by_param = {pv: statistics.mean(vs) for pv, vs in param_sharpes.items()}
+        mean_by_param = {pv: float(np.mean(vs)) for pv, vs in param_sharpes.items()}
         sharpe_list = list(mean_by_param.values())
 
         sensitivity = max(sharpe_list) - min(sharpe_list)  # Sharpe 変動幅

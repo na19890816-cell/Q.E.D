@@ -9,7 +9,7 @@ GenomeVector 間の類似度計算・新規性スコア付与モジュール。
   - 近似 Genome 候補を検出して排除候補リストを提示
 
 設計原則:
-  - pure Python
+  - Phase 7 numpy 化 (ADR-001 対象): compute_genome_similarity_matrix 全ペア→行列一括
   - 副作用なし
   - N^2 計算を想定（候補数 < 1000 での利用を前提）
 """
@@ -18,6 +18,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 
 from .alpha_genome_encoder import (
     GENOME_AXES,
@@ -95,7 +97,11 @@ def compute_genome_similarity_matrix(
     """
     GenomeVector リストの全ペア類似度を計算する。
 
-    N*(N-1)/2 ペアの上三角部分のみ計算（対称行列のため）。
+    Phase 7 numpy 化: GenomeVector を (N, D) 行列に変換し、
+    コサイン類似度を行列積・L2距離を broadcast で一括計算することで
+    O(N^2) の純 Python ループを除去する。
+
+    N*(N-1)/2 ペアの上三角部分のみ返す（対称行列のため）。
 
     Parameters
     ----------
@@ -105,24 +111,37 @@ def compute_genome_similarity_matrix(
     -------
     list[GenomeSimilarityEdge]
     """
-    edges: List[GenomeSimilarityEdge] = []
     n = len(genomes)
+    edges: List[GenomeSimilarityEdge] = []
+    if n < 2:
+        return edges
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            g1 = genomes[i]
-            g2 = genomes[j]
-            cos_sim = genome_cosine_similarity(g1, g2)
-            l2_dist = genome_l2_distance(g1, g2)
-            dom_match = g1.dominant_axis == g2.dominant_axis
+    # (N, D) 行列へ変換
+    mat = np.array([g.to_list() for g in genomes], dtype=np.float64)
 
-            edges.append(GenomeSimilarityEdge(
-                candidate_id_a=g1.candidate_id,
-                candidate_id_b=g2.candidate_id,
-                cosine_similarity=cos_sim,
-                l2_distance=l2_dist,
-                dominant_axis_match=dom_match,
-            ))
+    # コサイン類似度行列 — 正規化後の内積 (N, N)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)   # (N, 1)
+    zero_mask = norms < 1e-15
+    safe_norms = np.where(zero_mask, 1.0, norms)
+    normed = mat / safe_norms                             # (N, D)
+    cos_mat = np.clip(normed @ normed.T, -1.0, 1.0)       # (N, N)
+
+    # L2 距離行列 — broadcast (N, N)
+    diff = mat[:, np.newaxis, :] - mat[np.newaxis, :, :]  # (N, N, D)
+    l2_mat = np.sqrt(np.sum(diff ** 2, axis=2))            # (N, N)
+
+    # 上三角インデックス
+    i_idx, j_idx = np.triu_indices(n, k=1)
+
+    for ii, jj in zip(i_idx.tolist(), j_idx.tolist()):
+        g1, g2 = genomes[ii], genomes[jj]
+        edges.append(GenomeSimilarityEdge(
+            candidate_id_a=g1.candidate_id,
+            candidate_id_b=g2.candidate_id,
+            cosine_similarity=float(cos_mat[ii, jj]),
+            l2_distance=float(l2_mat[ii, jj]),
+            dominant_axis_match=g1.dominant_axis == g2.dominant_axis,
+        ))
 
     return edges
 
@@ -189,29 +208,55 @@ def _compute_cross_novelty(
     threshold: float,
     exclude_self: bool,
 ) -> List[GenomeNoveltyResult]:
+    """Phase 7 numpy 化: targets × references のコサイン類似度を行列一括計算。"""
     results: List[GenomeNoveltyResult] = []
+    if not references:
+        for target in targets:
+            results.append(GenomeNoveltyResult(
+                candidate_id=target.candidate_id,
+                novelty_score=1.0,
+                min_cosine_sim=0.0,
+                most_similar_id=None,
+                is_novel=True,
+            ))
+        return results
 
-    for target in targets:
-        max_sim = 0.0
-        most_similar_id: Optional[str] = None
+    t_mat = np.array([g.to_list() for g in targets], dtype=np.float64)    # (T, D)
+    r_mat = np.array([g.to_list() for g in references], dtype=np.float64)  # (R, D)
 
-        for ref in references:
-            if exclude_self and ref.candidate_id == target.candidate_id:
-                continue
-            sim = genome_cosine_similarity(target, ref)
-            if sim > max_sim:
-                max_sim = sim
-                most_similar_id = ref.candidate_id
+    # 正規化
+    def _safe_norm(m: np.ndarray) -> np.ndarray:
+        norms = np.linalg.norm(m, axis=1, keepdims=True)
+        return m / np.where(norms < 1e-15, 1.0, norms)
 
+    t_normed = _safe_norm(t_mat)
+    r_normed = _safe_norm(r_mat)
+    cos_mat = np.clip(t_normed @ r_normed.T, 0.0, 1.0)  # (T, R)
+
+    for ti, target in enumerate(targets):
+        row = cos_mat[ti].copy()
+        if exclude_self:
+            for ri, ref in enumerate(references):
+                if ref.candidate_id == target.candidate_id:
+                    row[ri] = 0.0
+        if row.size == 0 or row.max() == 0.0:
+            results.append(GenomeNoveltyResult(
+                candidate_id=target.candidate_id,
+                novelty_score=1.0,
+                min_cosine_sim=0.0,
+                most_similar_id=None,
+                is_novel=True,
+            ))
+            continue
+        best_ri = int(np.argmax(row))
+        max_sim = float(row[best_ri])
         novelty_score = 1.0 - max_sim
-        is_novel = novelty_score >= threshold
-
         results.append(GenomeNoveltyResult(
             candidate_id=target.candidate_id,
             novelty_score=novelty_score,
             min_cosine_sim=max_sim,
-            most_similar_id=most_similar_id,
-            is_novel=is_novel,
+            most_similar_id=references[best_ri].candidate_id,
+            is_novel=novelty_score >= threshold,
         ))
 
     return results
