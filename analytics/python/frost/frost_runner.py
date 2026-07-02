@@ -5,12 +5,14 @@ FROST Meta-Fitness Engine のエンドツーエンドオーケストレーター
 
 処理フロー:
   1. 候補受け取り & FrostCandidate 正規化
-  2. バッチ評価 (frost_selector.py)
-  3. ランキング + near-duplicate 抑制 (frost_ranker.py)
-  4. 最終ポリシー適用 (frost_decision_engine.py)
-  5. PostgreSQL 書き込み (postgres_frost_writer.py)
-  6. Audit events 発行 (postgres_frost_audit_bridge.py)
-  7. FrostRunOutput 返却
+  2. PolicySpec スナップショット生成 & qed_policies upsert (Phase 1)
+  3. バッチ評価 (frost_selector.py)
+  4. ランキング + near-duplicate 抑制 (frost_ranker.py)
+  5. 最終ポリシー適用 (frost_decision_engine.py)
+  6. PostgreSQL 書き込み (postgres_frost_writer.py)
+  7. frost_runs.policy_hash 更新 (Phase 1)
+  8. Audit events 発行 (postgres_frost_audit_bridge.py)
+  9. FrostRunOutput 返却
 
 設計原則:
   - dry_run=True 時は frost_promotion_bridges / knowledge_artifacts に書かない
@@ -36,7 +38,15 @@ from analytics.python.frost.frost_contracts import (
 from analytics.python.frost.frost_decision_engine import apply_final_policy
 from analytics.python.frost.frost_ranker import assign_decisions
 from analytics.python.frost.frost_selector import evaluate_candidates_batch
+from analytics.python.frost.policy_spec import (
+    PolicySpec,
+    policy_spec_from_frost_config,
+)
 from analytics.python.io.postgres_frost_writer import write_frost_run_output
+from analytics.python.pg_io.postgres_policy_bridge import (
+    upsert_policy_spec,
+    set_run_policy_hash,
+)
 
 
 def _now() -> datetime:
@@ -86,6 +96,10 @@ def run_frost_pipeline(
         if not c.trace_id:
             c.trace_id = trace_id
 
+    # ── Phase 1: PolicySpec スナップショット生成 ──────────────────────────
+    policy_spec: PolicySpec = policy_spec_from_frost_config(config)
+    policy_hash: str = policy_spec.policy_hash
+
     output = FrostRunOutput(
         run_id=run_id,
         trace_id=trace_id,
@@ -97,6 +111,7 @@ def run_frost_pipeline(
         dry_run=config.dry_run,
         started_at=started_at,
         status="running",
+        policy_hash=policy_hash,
     )
 
     # FROST が無効の場合は全 HOLD
@@ -148,7 +163,53 @@ def run_frost_pipeline(
     # ── Step 4: DB 書き込み ────────────────────────────────────────────
     _write_output(output, config, conn)
 
+    # ── Phase 1: qed_policies upsert & frost_runs.policy_hash 更新 ─────
+    _upsert_policy(output, policy_spec, config, conn)
+
     return output
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: PolicySpec upsert ヘルパー
+# ---------------------------------------------------------------------------
+
+def _upsert_policy(
+    output: FrostRunOutput,
+    policy_spec: PolicySpec,
+    config: FrostConfig,
+    conn: Optional[psycopg.Connection],
+) -> None:
+    """
+    qed_policies へ PolicySpec を upsert し、
+    frost_runs.policy_hash を設定する。
+
+    DB 接続がない場合・例外が発生した場合はサイレントにスキップ
+    (policy upsert の失敗でパイプライン全体を止めない)。
+    """
+    try:
+        if conn is not None:
+            upsert_policy_spec(conn, policy_spec, dry_run=config.dry_run)
+            set_run_policy_hash(
+                conn, output.run_id, policy_spec.policy_hash,
+                dry_run=config.dry_run,
+            )
+        else:
+            # 接続なし: DSN が設定されていれば一時接続を試みる
+            try:
+                dsn = config.effective_pg_dsn()
+                with psycopg.connect(dsn) as tmp_conn:
+                    upsert_policy_spec(tmp_conn, policy_spec, dry_run=config.dry_run)
+                    set_run_policy_hash(
+                        tmp_conn, output.run_id, policy_spec.policy_hash,
+                        dry_run=config.dry_run,
+                    )
+            except Exception:
+                pass  # DSN 未設定は許容 (ローカル/テスト環境)
+    except Exception as exc:
+        if config.verbose:
+            import traceback as _tb
+            print(f"[frost_runner] policy upsert error: {exc}")
+            _tb.print_exc()
 
 
 # ---------------------------------------------------------------------------

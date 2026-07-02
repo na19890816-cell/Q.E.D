@@ -237,6 +237,14 @@ class FrostRunOutput:
     # 設定スナップショット
     config_snapshot: Dict[str, Any] = field(default_factory=dict)
 
+    # Phase 1: PolicySpec ハッシュ (qed_policies への参照キー)
+    policy_hash: Optional[str] = None
+    """
+    PolicySpec の SHA-256 ハッシュ。"sha256:<64 hex chars>" 形式。
+    frost_runs.policy_hash に書き込まれる。
+    Phase 0 以前の run では None になる場合がある（後方互換）。
+    """
+
     # 実行状態
     status: str = "completed"
     """running / completed / failed / skipped / dry_run"""
