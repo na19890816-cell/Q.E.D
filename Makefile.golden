@@ -1,0 +1,141 @@
+# =============================================================================
+# Makefile.golden — QED Phase 0 ゴールデンラン検出器
+# =============================================================================
+# 使い方:
+#   include Makefile.golden  ← Makefile 末尾に追記
+#
+# ターゲット一覧:
+#   golden-db-init       golden 専用 DB にマイグレーション適用
+#   golden-dataset       本番 DB から固定データセット抽出 → CSV
+#   golden-load          golden DB へ CSV をロード
+#   golden-baseline      golden DB でパイプライン実行 → baseline.json 作成
+#   golden-check         baseline.json と現在の DB を比較(PASS/FAIL)
+#   golden-determinism   baseline → もう一度実行 → check の連続実行(決定論性の証明)
+#   golden-status        baseline.json の内容サマリー表示
+# =============================================================================
+
+SHELL        := /bin/bash
+GOLDEN_PYTHON := python3
+GOLDEN_SCRIPTS := $(REPO_ROOT)/scripts/golden
+GOLDEN_TESTS   := $(REPO_ROOT)/tests/golden
+GOLDEN_DATASET_CSV := $(GOLDEN_TESTS)/dataset/event_study_summaries.csv
+GOLDEN_BASELINE    := $(GOLDEN_TESTS)/baseline.json
+
+# golden 専用 DB。本番 DSN との混同防止のため明示的に別変数
+GOLDEN_PG_DSN  ?= postgresql://postgres:postgres@localhost:5432/qed_golden
+
+# データセット抽出設定
+GOLDEN_KEY_COLUMN ?= symbol
+GOLDEN_KEYS_LIMIT ?= 30
+
+# 非決定性源をオフにして golden 実行
+GOLDEN_ENV := \
+  QED_PG_DSN=$(GOLDEN_PG_DSN) \
+  GOLDEN_PG_DSN=$(GOLDEN_PG_DSN) \
+  FROST_PBO_PARALLEL_ENABLED=0 \
+  EML_SEED=42 \
+  GOLDEN_ROUND_DECIMALS=10
+
+.PHONY: golden-db-init golden-dataset golden-load \
+        golden-baseline golden-check golden-determinism golden-status
+
+# ---------------------------------------------------------------------------
+# golden-db-init: golden DB にすべてのマイグレーションを適用する
+# ---------------------------------------------------------------------------
+golden-db-init: ## golden 専用 DB にマイグレーション適用
+	@echo "[golden] golden DB 初期化: $(GOLDEN_PG_DSN)"
+	@psql $(GOLDEN_PG_DSN) -c "SELECT 1" > /dev/null 2>&1 || \
+	  (echo "ERROR: golden DB に接続できない: $(GOLDEN_PG_DSN)" && exit 1)
+	@echo "[golden] マイグレーション適用中..."
+	@for sql in $(REPO_ROOT)/qedschema/migrations/*.sql; do \
+	  echo "  apply: $$(basename $$sql)"; \
+	  psql $(GOLDEN_PG_DSN) -f "$$sql" -q 2>&1 | grep -v "^$$" || true; \
+	done
+	@echo "[golden] golden-db-init 完了"
+
+# ---------------------------------------------------------------------------
+# golden-dataset: 本番 DB から固定データセットを抽出
+# ---------------------------------------------------------------------------
+golden-dataset: ## 本番 DB から固定データセット CSV 抽出(read-only)
+	@echo "[golden] データセット抽出: key=$(GOLDEN_KEY_COLUMN) limit=$(GOLDEN_KEYS_LIMIT)"
+	@test -n "$(QED_PG_DSN)" || \
+	  (echo "ERROR: QED_PG_DSN 未設定(抽出元 = 本番DB)" && exit 1)
+	$(GOLDEN_PYTHON) $(GOLDEN_SCRIPTS)/golden_dataset.py extract \
+	  --key-column $(GOLDEN_KEY_COLUMN) \
+	  --keys-limit $(GOLDEN_KEYS_LIMIT) \
+	  --out $(GOLDEN_DATASET_CSV)
+	@echo "[golden] git add $(GOLDEN_DATASET_CSV) を実行してください(再現性の根)"
+
+# ---------------------------------------------------------------------------
+# golden-load: golden DB へ CSV をロード
+# ---------------------------------------------------------------------------
+golden-load: ## golden DB へ固定データセット CSV をロード
+	@echo "[golden] CSV ロード → golden DB"
+	@test -f "$(GOLDEN_DATASET_CSV)" || \
+	  (echo "ERROR: $(GOLDEN_DATASET_CSV) が無い。make golden-dataset を先に実行" && exit 1)
+	GOLDEN_PG_DSN=$(GOLDEN_PG_DSN) \
+	$(GOLDEN_PYTHON) $(GOLDEN_SCRIPTS)/golden_dataset.py load \
+	  --csv $(GOLDEN_DATASET_CSV)
+
+# ---------------------------------------------------------------------------
+# golden-baseline: パイプライン実行 → スナップショット保存
+# ---------------------------------------------------------------------------
+golden-baseline: ## golden DB でパイプライン実行 → baseline.json 作成
+	@echo "[golden] baseline 作成開始..."
+	@echo "[golden] Step 1/2: golden DB スナップショット取得"
+	$(GOLDEN_ENV) \
+	$(GOLDEN_PYTHON) $(GOLDEN_SCRIPTS)/golden_check.py baseline
+	@echo "[golden] baseline.json 保存: $(GOLDEN_BASELINE)"
+	@echo "[golden] git add $(GOLDEN_BASELINE) を実行してください"
+
+# ---------------------------------------------------------------------------
+# golden-check: baseline.json と現在の DB を比較
+# ---------------------------------------------------------------------------
+golden-check: ## baseline.json と現在の DB 状態を比較(差分 → exit 1)
+	@echo "[golden] golden check 実行..."
+	@test -f "$(GOLDEN_BASELINE)" || \
+	  (echo "ERROR: baseline が存在しない。make golden-baseline を先に実行" && exit 1)
+	$(GOLDEN_ENV) \
+	$(GOLDEN_PYTHON) $(GOLDEN_SCRIPTS)/golden_check.py check
+	@echo "[golden] golden-check 完了"
+
+# ---------------------------------------------------------------------------
+# golden-determinism: 決定論性の証明(Phase 0 verify)
+# ---------------------------------------------------------------------------
+golden-determinism: ## baseline → 再実行 → check の連続実行(決定論性証明)
+	@echo "[golden] ============================================"
+	@echo "[golden] Phase 0 verify: 決定論性テスト"
+	@echo "[golden] ============================================"
+	@echo ""
+	@echo "[golden] Step 1/3: baseline.json 作成..."
+	@$(MAKE) -s golden-baseline
+	@echo ""
+	@echo "[golden] Step 2/3: golden check (1回目)..."
+	@$(MAKE) -s golden-check
+	@echo ""
+	@echo "[golden] Step 3/3: golden check (2回目 — 同一結果の確認)..."
+	@$(MAKE) -s golden-check
+	@echo ""
+	@echo "[golden] ============================================"
+	@echo "[golden] Phase 0 verify PASS: 決定論性を確認"
+	@echo "[golden] ============================================"
+
+# ---------------------------------------------------------------------------
+# golden-status: baseline の内容サマリー
+# ---------------------------------------------------------------------------
+golden-status: ## baseline.json の内容サマリーを表示
+	@test -f "$(GOLDEN_BASELINE)" || \
+	  (echo "baseline.json が存在しない。make golden-baseline を先に実行" && exit 1)
+	@echo "=== golden baseline サマリー ==="
+	@$(GOLDEN_PYTHON) -c "
+import json
+from pathlib import Path
+b = json.loads(Path('$(GOLDEN_BASELINE)').read_text())
+total_rows = 0
+for tbl, info in sorted(b.items()):
+    rows = info.get('row_count', 0)
+    total_rows += rows
+    print(f'  {tbl:45s}  {rows:6d} rows')
+print(f'  {\"TOTAL\":45s}  {total_rows:6d} rows')
+print(f'  テーブル数: {len(b)}')
+"

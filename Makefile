@@ -234,3 +234,5 @@ test: ## Python ユニットテスト実行
 	PYTHONPATH=$(PYPATH) $(PYTHON) -m pytest tests/ -v 2>/dev/null || \
 	  PYTHONPATH=$(PYPATH) $(PYTHON) -m pytest analytics/python/ -v 2>/dev/null || \
 	  echo "[test] pytest 未インストール or テストなし"
+
+include Makefile.golden

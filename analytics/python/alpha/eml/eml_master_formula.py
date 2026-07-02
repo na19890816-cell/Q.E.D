@@ -69,6 +69,15 @@ class EMLDiscoveryConfig:
         default_factory=lambda: float(os.environ.get("EML_BACKTEST_COST_BPS", "2.0"))
     )
 
+    # 乱数 seed(golden run の決定論性確保用。None = 非固定)
+    # 環境変数 EML_SEED が設定されている場合はその値を使用する
+    rng_seed: Optional[int]         = field(
+        default_factory=lambda: (
+            int(os.environ["EML_SEED"])
+            if os.environ.get("EML_SEED") else None
+        )
+    )
+
 
 # ------------------------------------------------------------------ #
 # マスター実行
@@ -151,6 +160,7 @@ def run_eml_discovery(
             n_init=config.gradient_n_init,
             adam_steps=config.gradient_steps,
             top_k=config.top_k_gradient,
+            rng_seed=config.rng_seed,  # golden run の決定論性確保
         )
         candidates.extend(gr_cands)
 
