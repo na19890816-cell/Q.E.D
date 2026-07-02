@@ -42,6 +42,7 @@ from analytics.python.frost.policy_spec import (
     PolicySpec,
     policy_spec_from_frost_config,
 )
+from analytics.python.frost.run_context import RunContext
 from analytics.python.io.postgres_frost_writer import write_frost_run_output
 from analytics.python.pg_io.postgres_policy_bridge import (
     upsert_policy_spec,
@@ -305,3 +306,149 @@ def frost_candidates_from_eml(
         )
         result.append(fc)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: RunContext ラッパー API
+# ---------------------------------------------------------------------------
+
+def run_frost_pipeline_with_context(
+    candidates: List[FrostCandidate],
+    config: FrostConfig,
+    ctx: RunContext,
+    conn: Optional[psycopg.Connection] = None,
+) -> FrostRunOutput:
+    """
+    RunContext を使った run_frost_pipeline() の統一 API。
+
+    Phase 5: run_id / trace_id を RunContext から一元取得して
+    run_frost_pipeline() に委譲する (D5 負債解消)。
+
+    Parameters
+    ----------
+    candidates : list of FrostCandidate
+    config : FrostConfig
+    ctx : RunContext
+        実行コンテキスト。run_id / trace_id / dry_run / verbose を保持。
+    conn : psycopg.Connection, optional
+
+    Returns
+    -------
+    FrostRunOutput
+    """
+    # ctx の dry_run / verbose を config に反映する
+    # (config を直接書き換えると副作用があるので上書きは最小限に)
+    if ctx.dry_run and not config.dry_run:
+        config = FrostConfig(**{**config.__dict__, "dry_run": True})
+    if ctx.verbose and not config.verbose:
+        config = FrostConfig(**{**config.__dict__, "verbose": True})
+
+    return run_frost_pipeline(
+        candidates=candidates,
+        config=config,
+        conn=conn,
+        trace_id=ctx.trace_id,
+        run_id=ctx.run_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# __main__ エントリポイント (run_frost_engine.sh から呼び出される)
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import argparse
+    import json as _json
+    import sys as _sys
+
+    from analytics.python.frost.frost_config import FrostConfig
+    from analytics.python.frost.run_context import RunContext
+
+    parser = argparse.ArgumentParser(
+        description="FROST Meta-Fitness Engine — CLI エントリポイント",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="DB への destructive 書き込みをスキップ (frost_promotion_bridges 等)",
+    )
+    parser.add_argument(
+        "--batch-label",
+        type=str,
+        default=None,
+        help="バッチラベル (例: frost_v2). 未指定時は FROST_BATCH_LABEL 環境変数を使用",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=None,
+        help="選抜候補数 (例: 25). 未指定時は FROST_TOP_K 環境変数 or デフォルト値を使用",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="詳細ログを出力",
+    )
+    parser.add_argument(
+        "--run-id",
+        type=str,
+        default=None,
+        help="run_id を明示指定. 未指定時は自動生成",
+    )
+    parser.add_argument(
+        "--trace-id",
+        type=str,
+        default=None,
+        help="trace_id を明示指定. 未指定時は自動生成",
+    )
+
+    args = parser.parse_args()
+
+    # RunContext 生成 (Phase 5 統合)
+    ctx = RunContext.from_args(
+        args,
+        pipeline="frost",
+        run_id=args.run_id,
+        trace_id=args.trace_id,
+    )
+
+    # FrostConfig 生成 (環境変数ベース + CLI オプション上書き)
+    config = FrostConfig.from_env()
+    if args.dry_run:
+        config = FrostConfig(**{**config.__dict__, "dry_run": True})
+    if args.verbose:
+        config = FrostConfig(**{**config.__dict__, "verbose": True})
+    if args.batch_label:
+        config = FrostConfig(**{**config.__dict__, "batch_label": args.batch_label})
+    if args.top_k is not None:
+        config = FrostConfig(**{**config.__dict__, "top_k": args.top_k})
+
+    if config.verbose:
+        print(ctx.log_header())
+
+    # 候補なし (CLI から直接呼ぶ場合は DB から取得するフローが別途必要)
+    # ここでは「候補は外部から注入する」設計のためサンプルとして空リストで起動確認のみ
+    candidates: List[FrostCandidate] = []
+
+    output = run_frost_pipeline_with_context(
+        candidates=candidates,
+        config=config,
+        ctx=ctx,
+    )
+
+    result = {
+        "run_id":          output.run_id,
+        "trace_id":        output.trace_id,
+        "status":          output.status,
+        "candidate_count": output.candidate_count,
+        "selected_count":  output.selected_count,
+        "hold_count":      output.hold_count,
+        "rejected_count":  output.rejected_count,
+        "dry_run":         output.dry_run,
+        "error_message":   output.error_message,
+    }
+
+    print(_json.dumps(result, indent=2, default=str))
+    _sys.exit(0 if output.status in ("completed", "dry_run", "skipped") else 1)

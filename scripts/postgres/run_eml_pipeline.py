@@ -23,7 +23,6 @@ import json
 import logging
 import os
 import sys
-import uuid
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -32,6 +31,7 @@ import psycopg
 # プロジェクトルートを PYTHONPATH に追加
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from analytics.python.frost.run_context import RunContext  # Phase 5 統合
 from analytics.python.alpha.eml.eml_master_formula import (
     EMLDiscoveryConfig,
     run_eml_discovery,
@@ -111,15 +111,16 @@ def run_eml_pipeline() -> dict:
         log.warning("EML_ALPHA_ENABLED=1 が設定されていません。終了します。")
         return {"status": "skipped", "reason": "EML_ALPHA_ENABLED != 1"}
 
-    dry_run = os.environ.get("EML_ALPHA_DRY_RUN", "0") == "1"
-    trace_id = os.environ.get(
-        "EML_TRACE_ID",
-        str(uuid.uuid5(uuid.NAMESPACE_DNS, f"eml-{datetime.now(timezone.utc).isoformat()}")),  # noqa: DTZ
-    )
-    run_id = os.environ.get(
-        "EML_RUN_ID",
-        f"eml_v1__{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
-    )
+    # Phase 5: RunContext でコンテキストを一元管理 (D5 負債解消)
+    # 環境変数: EML_RUN_ID / EML_TRACE_ID / EML_BATCH_LABEL / EML_DRY_RUN / EML_VERBOSE
+    ctx = RunContext.from_env(pipeline="eml", prefix="EML_")
+    # 後方互換: EML_ALPHA_DRY_RUN も読む
+    if os.environ.get("EML_ALPHA_DRY_RUN", "0") == "1":
+        ctx.dry_run = True
+
+    run_id   = ctx.run_id
+    trace_id = ctx.trace_id
+    dry_run  = ctx.dry_run
 
     log.info(f"=== EML Pipeline Start ===")
     log.info(f"  run_id   = {run_id}")
