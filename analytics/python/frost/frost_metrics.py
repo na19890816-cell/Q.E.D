@@ -16,7 +16,6 @@ frost_features.py で抽出した生特徴量から、
 from __future__ import annotations
 
 import math
-import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -78,8 +77,10 @@ def robust_normalize(
     if n == 1:
         return [0.0]
 
-    median = statistics.median(values)
     sorted_v = sorted(values)
+    # median: 純 Python (ADR-001 禁止リスト対応, statistics 不使用)
+    mid = n // 2
+    median = sorted_v[mid] if n % 2 == 1 else (sorted_v[mid - 1] + sorted_v[mid]) / 2.0
 
     q1_idx = int(0.25 * (n - 1))
     q3_idx = int(0.75 * (n - 1))
@@ -90,10 +91,10 @@ def robust_normalize(
     if iqr > 1e-10:
         scale = iqr / 1.35
     else:
-        try:
-            scale = statistics.stdev(values)
-        except statistics.StatisticsError:
-            scale = 0.0
+        # stdev フォールバック: 純 Python 標本標準偏差
+        mean = sum(values) / n
+        var = sum((v - mean) ** 2 for v in values) / (n - 1)
+        scale = math.sqrt(max(0.0, var))
 
     if scale < 1e-10:
         return [0.0] * n
