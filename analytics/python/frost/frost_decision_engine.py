@@ -30,7 +30,6 @@ from analytics.python.frost.frost_contracts import FrostDecision, FrostEvaluatio
 
 def promote_borderline_to_review(
     decisions: List[FrostDecision],
-    evaluations_by_cid: Dict[str, FrostEvaluation],
     config: FrostConfig,
     borderline_margin: float = 0.05,
 ) -> List[FrostDecision]:
@@ -43,7 +42,6 @@ def promote_borderline_to_review(
     Parameters
     ----------
     decisions : list of FrostDecision
-    evaluations_by_cid : dict
     config : FrostConfig
     borderline_margin : float
         SELECTED 最下位スコアとの差がこれ以内なら REVIEW_REQUIRED
@@ -217,15 +215,13 @@ def apply_final_policy(
     -------
     tuple (decisions, summary_stats)
     """
-    eval_by_cid = {ev.candidate_id: ev for ev in evaluations}
-
     # Step 1: top_k 超過確認
     decisions = enforce_top_k_limit(decisions, config)
 
     # Step 2: borderline → REVIEW_REQUIRED
     if promote_borderline:
         decisions = promote_borderline_to_review(
-            decisions, eval_by_cid, config, borderline_margin
+            decisions, config, borderline_margin
         )
 
     # Step 3: promotion_top_k 確認

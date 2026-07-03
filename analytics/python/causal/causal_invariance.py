@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import math
 import os
-import statistics
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -241,11 +240,13 @@ def compute_invariance(
     passed = [r for r in regime_results if r.is_positive and r.is_significant]
     pass_ratio = len(passed) / len(regime_results)
 
-    # 回帰係数の安定性（変動係数の逆数）
+    # 回帰係数の安定性（変動係数の逆数）— pure Python (ADR-001 準拠)
     betas = [r.beta for r in regime_results]
     if len(betas) >= 2:
-        mean_beta = statistics.mean(betas)
-        std_beta = statistics.pstdev(betas)
+        n_b = len(betas)
+        mean_beta = sum(betas) / n_b
+        # 母標準偏差 (pstdev: 分母 n)
+        std_beta = math.sqrt(sum((b - mean_beta) ** 2 for b in betas) / n_b)
         cv = std_beta / abs(mean_beta) if abs(mean_beta) > 1e-10 else std_beta
         coeff_stability = max(0.0, min(1.0, 1.0 - cv))
     else:

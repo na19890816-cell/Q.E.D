@@ -3,16 +3,23 @@
 > Tool: vulture 2.x  (min-confidence 60)
 > Scope: `analytics/python/` `scripts/`
 > **Note: 棚卸しのみ。このセッションでは削除しない（Phase 1+ で整理予定）**
+>
+> **Phase 7〜9 修正済みステータス (2026-07-03)**
+> - `frost_metrics.py`: `statistics` モジュール削除済み (Phase 8)
+> - `frost_stability.py`: `statistics` モジュール削除済み (Phase 8)
+> - `causal_invariance.py`: `statistics` モジュール削除済み (Phase 9)
+> - `frost_decision_engine.py`: `promote_borderline_to_review` の未使用引数 `evaluations_by_cid` 削除済み (Phase 9)
 
 ## Summary
 
-| Category | Count |
-|----------|-------|
-| unused variable | 61 |
-| unused function | 56 |
-| unused method | 11 |
-| unused class | 4 |
-| unused attribute | 1 |
+| Category | Count | Phase 9 残存 |
+|----------|-------|-------------|
+| unused variable | 61 | 59 (frost_decision_engine:33 削除済み、frost_features:223 は vulture 誤検知・保持) |
+| unused function | 56 | 56 |
+| unused method | 11 | 11 |
+| unused class | 4 | 4 |
+| unused attribute | 1 | 1 |
+| **Total** | **133** | **131** |
 | **Total** | **133** |
 
 ## Detail by File
@@ -150,9 +157,9 @@
 
 ### `analytics/python/frost/frost_decision_engine.py`
 
-| Line | Kind | Symbol | Conf |
-|------|------|--------|------|
-| 33 | unused variable | `evaluations_by_cid` | 100% |
+| Line | Kind | Symbol | Conf | Status |
+|------|------|--------|------|--------|
+| 33 | unused variable | `evaluations_by_cid` | 100% | ✅ **Phase 9 削除済み** |
 
 ### `analytics/python/frost/frost_features.py`
 
