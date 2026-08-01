@@ -311,3 +311,109 @@ INSERT INTO audit_events (
 - [frost_engine.md](frost_engine.md) — Engine Operations Runbook
 - [frost_scorecard.md](frost_scorecard.md) — スコアカード詳細仕様
 - [frost_failure_modes.md](frost_failure_modes.md) — 障害モードと対処
+
+---
+
+## 14. Champion–Challenger 運用ルール
+
+**追記日**: 2026-06-13  
+**出典**: QED_REVIEW_2026-06-13.md §4 トリアージ #5（コード変更不要・明文化のみ）
+
+### 14.1 概要
+
+Champion–Challenger は、SELECTED 判定を受けた新規アルファを **即時昇格させず**、  
+一定期間だけ display-only（参照のみ）で既存ポートフォリオと並走させる運用ルールである。  
+fomoEngine（注259）で既に実践しているパターンを、昇格ポリシーとして明文化する。
+
+新規昇格候補 = **Challenger**、現行採用アルファ = **Champion** と呼ぶ。
+
+### 14.2 運用フロー
+
+```
+FROST 評価
+    └── decision = SELECTED + promotion_eligible = True
+            │
+            ▼
+    [Challenger 期間開始]
+    promotion_status = 'challenger'  (display-only、canonical 非適用)
+            │
+            ├── N 営業日の並走観察
+            │   └── 実績 IC / rolling SR / 採用済みアルファとの相関を記録
+            │
+            ├── 観察期間中に FROST 再評価（任意）
+            │
+            ▼
+    [Quant レビュー]
+            ├── Challenger が Champion に対して優位 → promotion_status = 'pending' → 通常昇格フローへ
+            ├── 優位性が確認できない → promotion_status = 'rejected'
+            └── 引き続き観察 → 期間延長（最大 2N 営業日）
+```
+
+### 14.3 Challenger 期間の推奨設定
+
+| パラメータ | 推奨値 | 根拠 |
+|---|---|---|
+| 並走期間 N | **21 営業日（約 1 ヶ月）** | 十分なサンプルで IC を評価できる最短期間 |
+| 延長上限 | 42 営業日（2N） | これ以上延ばすと判断が先送りになる |
+| 評価指標 | rolling IC (21 日)、累積 PnL、採用済み相関 | FROST のスコア軸と整合 |
+
+### 14.4 promotion_status 拡張
+
+Champion–Challenger 運用のために `frost_promotion_bridges.promotion_status` に  
+`challenger` 状態を追加する（**将来実装オプション**。現時点では手動管理でも可）。
+
+```
+現状の状態遷移（§4）:
+  pending → applied / rejected / error / dry_run
+
+Champion–Challenger 拡張後:
+  pending
+    └── challenger  (display-only、N 日並走)
+            ├── 優位確認 → pending → applied
+            └── 優位なし → rejected
+```
+
+**注意**: `promotion_status = 'challenger'` の DB 追加は Schema 変更を伴うため、  
+現時点では `promotion_status = 'dry_run'` + 手動台帳（スプレッドシート等）で代替可能。  
+将来の自動化フェーズで正式に追加する。
+
+### 14.5 Champion 置き換えの原則
+
+Challenger が Champion を置き換える場合の判断基準:
+
+1. **FROST スコア**: Challenger の frost_score ≥ Champion の frost_score × 1.05（5% 超過）
+2. **OOS 相関**: Challenger と Champion の相関 r < 0.6（NOTE-002 ゲートと同一基準）
+3. **rolling IC**: Challenger の直近 21 日 IC が Champion の同期間 IC を上回る
+4. **FSI（摂動安定性）**: Challenger の FSI が Champion と同等以上
+
+上記 4 条件をすべて満たす場合のみ置き換えを推奨する。  
+いずれかを満たさない場合は「並存」（既存 Champion を維持しつつ Challenger も昇格）を検討する。
+
+### 14.6 実施手順（現行 = 手動管理）
+
+```bash
+# 1. Challenger として仮登録（dry_run で昇格 Bridge を作成）
+FROST_DRY_RUN=1 make frost-promote
+
+# 2. N 営業日の観察記録（手動台帳 or スプレッドシート）
+#    記録項目: 日付, candidate_id, rolling_ic, cum_pnl, corr_vs_champion
+
+# 3. N 日後に Quant レビュー → 昇格 or 棄却
+#    昇格の場合: promotion_status を pending に変更後、make frost-promote
+#    棄却の場合: promotion_status を rejected に更新
+
+# 4. Champion 置き換えの場合
+UPDATE frost_promotion_bridges
+SET promotion_status = 'revoked', updated_at = now()
+WHERE candidate_id = '<旧 Champion ID>'
+  AND promotion_status = 'applied';
+```
+
+### 14.7 このルールの意義
+
+Champion–Challenger は「昇格の一方通行性」を緩和する最初のステップである。  
+完全な Detect → Kill ライフサイクル（NOTE-003）の実装前において、  
+「新規候補を慎重に評価する」という文化的・運用的なガードとして機能する。
+
+> FROSTが候補アルファに取っている態度（勝った実績ではなく検証を通ったかで判断する）を、  
+> 昇格後のアルファの「後継選択」にも適用する。— QED_REVIEW_2026-06-13.md §2
