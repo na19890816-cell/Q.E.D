@@ -417,3 +417,182 @@ Champion–Challenger は「昇格の一方通行性」を緩和する最初の�
 
 > FROSTが候補アルファに取っている態度（勝った実績ではなく検証を通ったかで判断する）を、  
 > 昇格後のアルファの「後継選択」にも適用する。— QED_REVIEW_2026-06-13.md §2
+
+---
+
+## 15. Detect → Kill ライフサイクル (NOTE-003 / 憲法ギャップ G3)
+
+**Last Updated**: 2026-09-30  
+**実装モジュール**: `analytics/python/frost/frost_cusum.py`, `analytics/python/frost/frost_lifecycle.py`
+
+### 15.1 概要
+
+昇格済みアルファが時間の経過とともに性能劣化した場合に検知し、KillQueue に追加して  
+人間レビューを経た上で昇格を取り消す（Kill する）フローを定義する。
+
+設計憲法のシグナルライフサイクル全体:
+
+```
+Predict → Select → Execute → Detect → Kill
+                                 ↑
+                             本セクションのスコープ
+```
+
+**半自動 Kill 方針**: CUSUM が劣化を検知しても、即時自動 Kill は行わない。  
+人間の最終承認（Quant レビュー）を経てから `REVOKED` に遷移させる。  
+これは「承認なき降格」を防ぐ安全装置である。
+
+### 15.2 LifecycleStatus（状態遷移）
+
+```
+ACTIVE
+  │
+  ├── CUSUM 劣化検知 ──→ DEGRADED (review_required=True)
+  │                           │
+  │                           ├── Quant Review: Kill 承認 ──→ REVOKED
+  │                           ├── Quant Review: 継続承認 ──→ ACTIVE (復帰)
+  │                           └── 未レビュー中 ──→ UNDER_REVIEW (任意)
+  │
+  ├── Champion-Challenger 並走 ──→ SUSPENDED
+  │       └── Challenger 勝利 ──→ REVOKED
+  │       └── Champion 維持 ──→ ACTIVE (復帰)
+  │
+  └── (直接) ──→ REVOKED (手動 Kill)
+```
+
+| 状態 | 意味 | 再検査対象 |
+|------|------|-----------|
+| `active` | 正常稼働中 | ✅ |
+| `degraded` | CUSUM Detect トリガー済み・レビュー待ち | ✅ |
+| `under_review` | 人間レビュー中 | ❌ スキップ |
+| `revoked` | Kill 確定（昇格取消） | ❌ スキップ |
+| `suspended` | Champion-Challenger 並走中 | ✅ |
+
+### 15.3 CUSUM 劣化検知パラメータ
+
+**実装**: `CusumDetector` (Page 1954 双方向 CUSUM、純 Python / ADR-001 準拠)
+
+| パラメータ | デフォルト | 意味 |
+|-----------|-----------|------|
+| `k` | 0.5 | 許容ドリフト（中立点 = `mu0 - k`） |
+| `h` | 5.0 | 警告閾値（累積和がこれを超えたら Detect） |
+| `mu0` | 0.0 | 正常時の IC 期待値 |
+| `min_ic_len` | 10 | CUSUM 実行に必要な最小 rolling IC 点数 |
+
+**数理仕様 (Page 1954)**:
+
+```
+下方 CUSUM: S_neg[t] = max(0, S_neg[t-1] - (v[t] - mu0 + k))
+上方 CUSUM: S_pos[t] = max(0, S_pos[t-1] + (v[t] - mu0) - k)
+
+下方 Detect: S_neg[t] >= h  → 劣化検知 (IC が持続的に低下)
+上方 Detect: S_pos[t] >= h  → 異常回復検知 (データ品質問題の代理指標)
+```
+
+**中立点の解釈**: IC が `mu0 - k`（デフォルト: `-0.5`）を上回る限り S_neg は増加しない。  
+IC が中立点を下回って初めて、その差分が S_neg に蓄積される。
+
+### 15.4 Kill フロー（半自動）
+
+```
+[毎バッチ実行または on-demand]
+        │
+        ▼
+AlphaLifecycleEngine.build_kill_queue(promoted_records)
+        │
+        ├── 各アルファ: AlphaLifecycleEngine.check(record)
+        │       ├── REVOKED / UNDER_REVIEW → スキップ
+        │       ├── rolling_ic < min_ic_len → スキップ
+        │       └── CusumDetector.run(rolling_ic)
+        │               ├── degradation_detected=True
+        │               │   → new_status=DEGRADED, review_required=True
+        │               └── degradation_detected=False
+        │                   → new_status 維持 (DEGRADED→ACTIVE 復帰含む)
+        │
+        ▼
+KillQueue (review_required=True のアルファを収集)
+        │
+        ▼
+[Quant Review — 人間の判断]
+        ├── Kill 承認 → promotion_status='revoked' に更新 (pg_io 経由)
+        ├── 継続承認 → promotion_status='active' に戻す
+        └── 追加観察 → promotion_status='under_review' に設定
+```
+
+### 15.5 実施手順
+
+#### 15.5.1 Python から実行
+
+```python
+from analytics.python.frost.frost_lifecycle import (
+    AlphaLifecycleEngine, LifecycleRecord, LifecycleStatus
+)
+from analytics.python.frost.frost_cusum import CusumParams
+
+# エンジン初期化
+engine = AlphaLifecycleEngine(
+    params=CusumParams(k=0.5, h=5.0, mu0=0.0),
+    min_ic_len=10,
+)
+
+# DB から昇格済みアルファと rolling IC を取得（pg_io 経由）
+records = [
+    LifecycleRecord(
+        artifact_id=row["artifact_id"],
+        current_status=row["promotion_status"],
+        rolling_ic=row["rolling_ic_series"],  # List[float]
+    )
+    for row in promoted_artifacts_with_ic
+]
+
+# KillQueue を構築
+kill_queue = engine.build_kill_queue(records)
+
+print(f"要レビュー件数: {kill_queue.count}")
+for item in kill_queue.pending_reviews:
+    print(f"  {item.artifact_id}: {item.reason}")
+    # CUSUM 詳細も取得可能
+    if item.cusum_result:
+        print(f"    first_degradation_index={item.cusum_result.first_degradation_index}")
+```
+
+#### 15.5.2 FrostConfig / PolicySpec から初期化
+
+```python
+from analytics.python.frost.frost_lifecycle import AlphaLifecycleEngine
+
+# PolicySpec や FrostConfig から自動設定
+engine = AlphaLifecycleEngine.from_config(policy_spec)
+# policy_spec に cusum_k, cusum_h, cusum_mu0, lifecycle_min_ic_len 属性があれば使用
+```
+
+### 15.6 Kill 実行後の後処理
+
+REVOKED 確定後（`pg_io` 経由）に以下を実施する:
+
+1. **knowledge_artifacts**: `promotion_status = 'revoked'` に更新
+2. **frost_promotion_bridges**: `promotion_status = 'revoked'` に更新
+3. **Audit Event 記録**: `event_type = 'alpha_killed'`、理由・CUSUM スコアを記録
+4. **Champion-Challenger**: Kill されたアルファが Champion だった場合、Challenger を新 Champion に昇格
+5. **ポートフォリオ相関再検査**: Kill により promoted_signals が変化するため、G2 ゲートを再実行
+
+### 15.7 パラメータチューニング指針
+
+| シナリオ | 推奨調整 |
+|----------|---------|
+| 誤検知が多い（正常アルファが DEGRADED になる）| `h` を大きくする（感度低下） |
+| 検知が遅い（明らかな劣化を見逃す） | `h` を小さくする または `k` を小さくする |
+| IC が 0 近傍でなく正の期待値を持つ | `mu0` を実績 IC 平均値に調整 |
+| 短期 rolling IC しか持てない | `min_ic_len` を引き下げる（慎重に） |
+
+> **注意**: パラメータ変更は `PolicySpec` 経由で行い（`cusum_k`, `cusum_h`, `cusum_mu0`, `lifecycle_min_ic_len`）、  
+> 変更後は `policy_hash` が更新される。既存の KillQueue の判定は旧パラメータで行われたものとして扱う。
+
+### 15.8 このルールの意義
+
+G3 Detect → Kill ライフサイクルは、設計憲法の最終フェーズを実装する。  
+これにより FROST の役割は「昇格判断」だけでなく「昇格後モニタリング」にも拡張され、  
+Q.E.D. システム全体の統計的健全性を長期的に維持する仕組みが整う。
+
+> 「昇格した後のアルファも、FROST が引き続き監視する」— NOTE-003 §1
+

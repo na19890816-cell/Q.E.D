@@ -12,7 +12,7 @@ Note は「今すぐコードを書かない」が「忘れてはいけない」
 |---|---|---|---|---|
 | [NOTE-001](NOTE-001-deflated-sharpe-ratio.md) | Deflated Sharpe Ratio（DSR）未実装 | **最優先** | P8 + ADR-002 先行 | Note登録済み |
 | [NOTE-002](NOTE-002-portfolio-correlation-gate.md) | 採用済みポートフォリオとの相関ゲート r<0.6 未実装 | 高 | P8 ablation 後 | ✅ 実装完了 (2026-09-30) |
-| [NOTE-003](NOTE-003-detect-kill-lifecycle.md) | Detect → Kill ライフサイクル未実装 | 高 | P0〜P9 完了後の第1機能追加 | Note登録済み |
+| [NOTE-003](NOTE-003-detect-kill-lifecycle.md) | Detect → Kill ライフサイクル未実装 | 高 | P0〜P9 完了後の第1機能追加 | ✅ 実装完了 (2026-09-30) |
 
 ## 追加ゲート候補（gate-0 評価待ち）
 

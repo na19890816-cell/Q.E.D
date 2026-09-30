@@ -4,8 +4,8 @@
 **出典**: QED_REVIEW_2026-06-13.md §3「憲法ギャップ監査 — ギャップ3」  
 **種別**: 憲法ギャップ（外部提案ではなく、設計憲法が既に義務付けている未実装項目）  
 **優先度**: 高（憲法違反・思想と実装の乖離）  
-**ステータス**: Note登録済み・未実装  
-**コード変更**: なし（Note登録のみ）
+**ステータス**: ✅ 実装完了 (2026-09-30)  
+**コード変更**: `analytics/python/frost/frost_cusum.py`, `analytics/python/frost/frost_lifecycle.py` 新規作成
 
 ---
 
@@ -125,3 +125,55 @@ NOTE-003 (Detect → Kill)
 - 設計憲法（Detect → Kill ライフサイクル義務）
 - `frost_promotion_policy.md` — 昇格フロー定義（Kill フローは未記載）
 - Page, E.S. (1954). "Continuous inspection schemes." Biometrika 41(1), 100–115. (CUSUM 原著)
+
+---
+
+## 8. 実装記録 (2026-09-30)
+
+### 作成ファイル
+
+| ファイル | 説明 |
+|----------|------|
+| `analytics/python/frost/frost_cusum.py` | Page (1954) 双方向 CUSUM — 純 Python 実装 (ADR-001 準拠) |
+| `analytics/python/frost/frost_lifecycle.py` | Detect/Kill ライフサイクル管理エンジン |
+| `tests/unit/test_phase3_detect_kill.py` | 105 tests / 10 クラス / `@pytest.mark.phase3_detect_kill` |
+
+### 実装の重要決定事項
+
+1. **CUSUM 数式**: Page (1954) の正式定式化を採用
+   - 下方: `S_neg[t] = max(0, S_neg[t-1] - (v[t] - mu0 + k))`
+   - 中立点 = `mu0 - k` (デフォルト: `-0.5`)
+   - `v > mu0 - k` の場合 S_neg は増加しない（正常範囲として無視）
+
+2. **半自動 Kill 方針**: CUSUM 検知 → KillQueue 追加 → 人間承認の 3 段階
+   - 即時自動 Kill は実装しない（NOTE-003 §3.2 方針を遵守）
+
+3. **スキップ対象**: `REVOKED` / `UNDER_REVIEW` は再検査しない
+   - 人間レビュー中のアルファを二重処理しないための安全装置
+
+4. **DEGRADED → ACTIVE 復帰**: CUSUM が一度検知しても次回チェックで未検知なら復帰
+   - CUSUM は全系列に対してリセットから再計算するため、直近のデータが正常なら復帰する
+
+### テスト構成 (105 tests / 10 クラス)
+
+| クラス | Tests | 内容 |
+|--------|-------|------|
+| `TestCusumParams` | 9 | パラメータバリデーション・from_config |
+| `TestCusumStepResult` | 5 | step 結果プロパティ |
+| `TestCusumRunResult` | 7 | バッチ結果プロパティ・to_dict |
+| `TestCusumDetectorStep` | 10 | ストリーミング動作・NaN/Inf ガード |
+| `TestCusumDetectorRun` | 10 | バッチ処理・混合シナリオ |
+| `TestDetectDegradationCusum` | 6 | 関数型ラッパー |
+| `TestLifecycleStatus` | 4 | 定数 |
+| `TestLifecycleRecord` | 4 | 入力 DTO |
+| `TestLifecycleCheckResult` | 5 | 結果プロパティ・to_dict |
+| `TestKillQueue` | 6 | キュー管理・to_dict |
+| `TestAlphaLifecycleEngineCheck` | 14 | ステータス遷移ロジック |
+| `TestAlphaLifecycleEngineBatch` | 8 | check_batch / build_kill_queue |
+| `TestAlphaLifecycleEngineFromConfig` | 5 | from_config |
+| `TestCheckAlphaDegradation` | 6 | 関数型ラッパー |
+| `TestIntegration` | 6 | 統合シナリオ |
+
+### runbook 追記
+
+`docs/runbooks/frost_promotion_policy.md` §15 に Kill フロー全体を追記。
