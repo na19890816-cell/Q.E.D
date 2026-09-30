@@ -176,6 +176,13 @@ class FrostConfig:
     lifecycle_min_ic_len: int = 10
     """G3: CUSUM 検査に必要な最小 rolling IC 点数。"""
 
+    # ── G1: Deflated Sharpe Ratio ─────────────────────────────────────────
+    min_dsr: float = 0.95
+    """G1: DSR 合格閾値 (DSR >= min_dsr で昇格可)。"""
+
+    dsr_default_n_trials: int = 1
+    """G1: 試行回数 N 未提供時の仮定値 (ADR-002 系譜ログ整備までの暫定)。"""
+
     # ── Hard Gate 閾値 ────────────────────────────────────────────────────
     pbo_threshold: float = 0.20
     """PBO がこれを超えると hard gate FAIL (b1)。"""
@@ -353,6 +360,12 @@ class FrostConfig:
         if self.lifecycle_min_ic_len < 1:
             errors.append(f"lifecycle_min_ic_len={self.lifecycle_min_ic_len} は 1 以上である必要があります")
 
+        # G1: DSR パラメータチェック
+        if not (0.0 <= self.min_dsr <= 1.0):
+            errors.append(f"min_dsr={self.min_dsr} は [0, 1] の範囲である必要があります")
+        if self.dsr_default_n_trials < 1:
+            errors.append(f"dsr_default_n_trials={self.dsr_default_n_trials} は 1 以上である必要があります")
+
         # top_k の正値チェック
         if self.top_k <= 0:
             errors.append(f"top_k={self.top_k} は 1 以上である必要があります")
@@ -488,6 +501,10 @@ def load_frost_config(overrides: Optional[dict] = None) -> FrostConfig:
         cusum_h=_env_float("FROST_CUSUM_H", 5.0),
         cusum_mu0=_env_float("FROST_CUSUM_MU0", 0.0),
         lifecycle_min_ic_len=_env_int("FROST_LIFECYCLE_MIN_IC_LEN", 10),
+
+        # ── G1: DSR ───────────────────────────────────────────────────────
+        min_dsr=_env_float("FROST_MIN_DSR", 0.95),
+        dsr_default_n_trials=_env_int("FROST_DSR_DEFAULT_N_TRIALS", 1),
 
         # ── Hard Gate ─────────────────────────────────────────────────────
         pbo_threshold=_env_float("FROST_PBO_THRESHOLD", 0.20),

@@ -137,6 +137,9 @@ class PolicySpec:
     cusum_h: float = 5.0
     cusum_mu0: float = 0.0
     lifecycle_min_ic_len: int = 10
+    # G1: Deflated Sharpe Ratio (DSR >= min_dsr で昇格可)
+    min_dsr: float = 0.95
+    dsr_default_n_trials: int = 1   # ADR-002 系譜ログ整備までの N 仮定値
 
     # ── [selection] 選抜制御 ──────────────────────────────────────────────
     top_k: int = 25
@@ -221,6 +224,8 @@ class PolicySpec:
                 "cusum_h":                   self.cusum_h,
                 "cusum_mu0":                 self.cusum_mu0,
                 "lifecycle_min_ic_len":      self.lifecycle_min_ic_len,
+                "min_dsr":                   self.min_dsr,
+                "dsr_default_n_trials":      self.dsr_default_n_trials,
             },
             "selection": {
                 "top_k":                     self.top_k,
@@ -307,6 +312,8 @@ class PolicySpec:
             cusum_h=                    float(g.get("cusum_h",                   5.0 )),
             cusum_mu0=                  float(g.get("cusum_mu0",                 0.0 )),
             lifecycle_min_ic_len=       int(  g.get("lifecycle_min_ic_len",      10  )),
+            min_dsr=                    float(g.get("min_dsr",                   0.95)),
+            dsr_default_n_trials=       int(  g.get("dsr_default_n_trials",      1   )),
             # selection
             top_k=                      int(  s.get("top_k",                     25  )),
             promotion_top_k=            int(  s.get("promotion_top_k",           5   )),
@@ -429,6 +436,11 @@ class PolicySpec:
             errors.append(f"cusum_h={self.cusum_h} は正である必要があります")
         if self.lifecycle_min_ic_len < 1:
             errors.append(f"lifecycle_min_ic_len={self.lifecycle_min_ic_len} は 1 以上である必要があります")
+
+        if not (0.0 <= self.min_dsr <= 1.0):
+            errors.append(f"min_dsr={self.min_dsr} は [0,1] である必要があります")
+        if self.dsr_default_n_trials < 1:
+            errors.append(f"dsr_default_n_trials={self.dsr_default_n_trials} は 1 以上である必要があります")
 
         if self.top_k <= 0:
             errors.append(f"top_k={self.top_k} は 1 以上である必要があります")
@@ -559,6 +571,8 @@ def policy_spec_from_frost_config(cfg: Any) -> PolicySpec:
         cusum_h=                    getattr(cfg, "cusum_h", 5.0),
         cusum_mu0=                  getattr(cfg, "cusum_mu0", 0.0),
         lifecycle_min_ic_len=       getattr(cfg, "lifecycle_min_ic_len", 10),
+        min_dsr=                    getattr(cfg, "min_dsr", 0.95),
+        dsr_default_n_trials=       getattr(cfg, "dsr_default_n_trials", 1),
         # selection
         top_k=                      cfg.top_k,
         promotion_top_k=            cfg.promotion_top_k,
@@ -640,6 +654,8 @@ def policy_spec_to_frost_config(spec: PolicySpec) -> Any:
         cusum_h=                    spec.cusum_h,
         cusum_mu0=                  spec.cusum_mu0,
         lifecycle_min_ic_len=       spec.lifecycle_min_ic_len,
+        min_dsr=                    spec.min_dsr,
+        dsr_default_n_trials=       spec.dsr_default_n_trials,
         # selection
         top_k=                      spec.top_k,
         promotion_top_k=            spec.promotion_top_k,
@@ -683,6 +699,7 @@ _POLICY_ENV_VARS: List[str] = [
     "FROST_FSI_MAX", "FROST_REGIME_ENTROPY_MIN", "FROST_SIGNAL_CORR_MAX",
     "FROST_MAX_PORTFOLIO_CORR",
     "FROST_CUSUM_K", "FROST_CUSUM_H", "FROST_CUSUM_MU0", "FROST_LIFECYCLE_MIN_IC_LEN",
+    "FROST_MIN_DSR", "FROST_DSR_DEFAULT_N_TRIALS",
     "FROST_TOP_K", "FROST_PROMOTION_TOP_K", "FROST_REQUIRE_AUDIT_PASS",
     "FROST_NEAR_DUPLICATE_THRESHOLD", "FROST_MAX_SAME_FAMILY",
     "FROST_REVIEW_REQUIRED_DEFAULT", "FROST_AUTO_APPROVE_LOW_RISK",
@@ -758,6 +775,8 @@ def load_policy_spec(
         cusum_h=                    _env_float("FROST_CUSUM_H",                    5.0 ),
         cusum_mu0=                  _env_float("FROST_CUSUM_MU0",                  0.0 ),
         lifecycle_min_ic_len=       _env_int(  "FROST_LIFECYCLE_MIN_IC_LEN",       10  ),
+        min_dsr=                    _env_float("FROST_MIN_DSR",                    0.95),
+        dsr_default_n_trials=       _env_int(  "FROST_DSR_DEFAULT_N_TRIALS",       1   ),
         # selection
         top_k=                      _env_int(  "FROST_TOP_K",                      25  ),
         promotion_top_k=            _env_int(  "FROST_PROMOTION_TOP_K",            5   ),

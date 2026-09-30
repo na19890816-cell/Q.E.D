@@ -596,3 +596,53 @@ Q.E.D. システム全体の統計的健全性を長期的に維持する仕組�
 
 > 「昇格した後のアルファも、FROST が引き続き監視する」— NOTE-003 §1
 
+---
+
+## 16. Deflated Sharpe Ratio ゲート (NOTE-001 / 憲法ギャップ G1)
+
+> 実装: `analytics/python/frost/frost_dsr.py` (Phase 4b, 2026-09-30)
+
+### 16.1 概要
+
+昇格決定時に候補の OOS リターン系列から DSR を算出し、`DSR >= min_dsr` を昇格条件とする。
+G2 (PortfolioCorrelationGate) と同様、FROST 評価時ではなく **昇格 Bridge レイヤーから呼ぶスタンドアロンゲート**。
+gate_engine / スコア軸への統合は P8 ablation 後に判断する。
+
+```
+DSR = PSR(SR0)
+PSR(SR*) = Φ((SR^ − SR*)·√(T−1) / √(1 − γ3·SR^ + (γ4−1)/4·SR^²))
+SR0 = √V[SR] · ((1−γ)·Φ⁻¹(1−1/N) + γ·Φ⁻¹(1−1/(N·e)))
+```
+
+### 16.2 パラメータ (PolicySpec.hard_gates)
+
+| フィールド | 環境変数 | デフォルト | 意味 |
+|---|---|---|---|
+| `min_dsr` | `FROST_MIN_DSR` | 0.95 | DSR 合格閾値 |
+| `dsr_default_n_trials` | `FROST_DSR_DEFAULT_N_TRIALS` | 1 | N 未提供時の仮定試行数 |
+
+### 16.3 試行回数 N の扱い (ADR-002 未整備への暫定措置)
+
+| 入力 | n_trials_source | review_required |
+|---|---|---|
+| `n_trials` 明示 | `provided` | 不合格時のみ True |
+| 未指定 (`dsr_default_n_trials` を使用) | `assumed` | **常に True** |
+| `trial_sharpes` のみ | `assumed` (本数を N の下限として採用) | **常に True** |
+
+N の過少申告は DSR を楽観化するため、仮定値での合格は必ず人間レビューを経る。
+ADR-002 系譜ログで run 横断の累積試行数が集計可能になった時点で `n_trials` を明示供給に切り替える。
+
+### 16.4 使用例
+
+```python
+from analytics.python.frost.frost_dsr import DsrGate
+gate = DsrGate.from_config(policy_spec)
+res = gate.check(oos_daily_returns, n_trials=trial_count, trial_sharpes=sibling_srs)
+if not res.passed:
+    reject(res.failure_reason)          # DSR_BELOW_THRESHOLD / INSUFFICIENT_OBS
+elif res.review_required:
+    enqueue_review(res.to_dict())
+```
+
+- リターンは **非年率** (日次等) のまま渡す。SR も非年率で計算される。
+- `trial_sharpes` を渡す場合は同じ頻度の非年率 SR で揃えること。

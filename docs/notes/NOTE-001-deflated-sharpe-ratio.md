@@ -4,8 +4,8 @@
 **出典**: QED_REVIEW_2026-06-13.md §3「憲法ギャップ監査 — ギャップ1」  
 **種別**: 憲法ギャップ（外部提案ではなく、設計憲法が既に義務付けている未実装項目）  
 **優先度**: 最優先（憲法違反）  
-**ステータス**: Note登録済み・未実装  
-**コード変更**: なし（Note登録のみ）
+**ステータス**: ✅ 実装完了 (2026-09-30, Phase 4b) — N は ADR-002 整備まで暫定仮定値  
+**コード変更**: `analytics/python/frost/frost_dsr.py` / `tests/unit/test_phase4_dsr.py`
 
 ---
 
@@ -95,3 +95,39 @@ NOTE-001 (DSR)
 - ADR-002 系譜ログ（ドラフト）
 - 設計憲法（シグナル採用前 DSR 算出義務）
 - Bailey, D.H., López de Prado, M. (2014). "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality."
+
+---
+
+## 8. 実装記録 (Phase 4b, 2026-09-30)
+
+### 8.1 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| モジュール | `analytics/python/frost/frost_dsr.py`（純 Python / numpy・statistics・scipy 不使用） |
+| 公開 API | `norm_cdf` / `norm_ppf` / `sample_moments` / `probabilistic_sharpe_ratio` / `expected_max_sharpe` / `deflated_sharpe_ratio` / `DsrParams` / `DsrGate` / `check_dsr_gate` |
+| 配置 | 昇格前スタンドアロンゲート（§4 推奨の「DSR < 閾値は昇格不可」）。gate_engine 統合は P8 ablation 後 |
+| PolicySpec | `min_dsr=0.95` / `dsr_default_n_trials=1`（hard_gates セクション, policy_hash 対象） |
+| テスト | `tests/unit/test_phase4_dsr.py`（マーカー `phase4_dsr`） |
+
+### 8.2 数式の訂正
+
+本 Note §2 および HANDOVER_2026-09-30 §5 に記載された式は原論文の定義と一致しないため、実装は原論文に従った:
+
+```
+DSR = PSR(SR0) = Φ( (SR^ − SR0)·√(T−1) / √(1 − γ3·SR^ + (γ4−1)/4·SR^²) )
+SR0 = √V[SR] · ((1−γ)·Φ⁻¹(1−1/N) + γ·Φ⁻¹(1−1/(N·e)))      γ: Euler–Mascheroni
+```
+
+DSR は確率値 ∈ [0,1] であり、「DSR < 0」ではなく「DSR < min_dsr (0.95)」で不合格と判定する。
+
+### 8.3 検証
+
+- 論文数値例（年率 SR=2.5, T=1250, N=100, V=0.5, 歪度 −3, 尖度 10）→ DSR = 0.9004 / 年率 SR0 = 1.789（論文値と一致）
+- `norm_ppf` は scipy 比 最大誤差 < 1e-8、`norm_cdf` は < 1e-15
+- 歪度・尖度は scipy.stats と 1e-12 以内で一致
+
+### 8.4 残課題（ADR-002 依存）
+
+- 試行回数 N は現状 `dsr_default_n_trials`（=1, 退化版 DSR = PSR(0)）を仮定。仮定時は `review_required=True` を強制
+- ADR-002 系譜ログで run 横断の累積試行数・兄弟候補 SR が集計できた時点で `n_trials` / `trial_sharpes` を供給する
