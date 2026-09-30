@@ -1,8 +1,8 @@
 # prostock — EML Alpha Discovery & FROST Meta-Fitness Engine
 
 **プロジェクト**: Q.E.D. EML Alpha Discovery / Backtest / FROST Phase 5 Selection Pipeline  
-**ステータス**: ✅ 実装完了・全テスト通過 (278 passed)  
-**最終更新**: 2026-06-10
+**ステータス**: ✅ 実装完了・全テスト通過 (906 passed, 24 skipped)  
+**最終更新**: 2026-06-13
 
 ---
 
@@ -108,7 +108,7 @@ fitness = 0.30 × rank_IC
 
 ## テスト状況
 
-### ユニットテスト (229 passed)
+### ユニットテスト
 
 | ファイル | テスト数 | カバレッジ |
 |----------|----------|-----------|
@@ -118,17 +118,22 @@ fitness = 0.30 × rank_IC
 | `test_event_study_writer.py` | 12 | EventStudyWriter UPSERT |
 | `test_target_rule_resolver.py` | 17 | TargetRuleResolver |
 | `test_trace_id_consistency.py` | 13 | trace_id 伝播・一貫性 |
-| `test_frost_layers.py` | **56** | FROST全レイヤー (Config/Contracts/Features/Metrics/Stability/PBO/Selector/Ranker/Decision/Report) |
+| `test_frost_layers.py` | 56 | FROST全レイヤー (Config/Contracts/Features/Metrics/Stability/PBO/Selector/Ranker/Decision/Report) |
+| `test_phase6_base_writer.py` | 78 | BaseWriter 共通骨格 (Phase 6) |
+| `test_phase7_numpy_accel.py` | 44 | numpy 加速版 数値同等性・速度 (ADR-001, Phase 7) |
+| `test_phase8_meta_validator.py` | 66 | MetaValidator R01〜R05 整合性 (Phase 8) |
+| `test_phase9_dead_code.py` | 40 | statistics 完全除去・未使用引数削除 (Phase 9) |
 
-### 統合テスト (49 passed)
+### 統合テスト / golden テスト
 
 | ファイル | テスト数 | カバレッジ |
 |----------|----------|-----------|
 | `test_eml_pipeline_integration.py` | 25 | Phase A→E E2E、DB UPSERT安全性、NaN/Infガード、dry_run動作 |
 | `test_pipeline_integration.py` | — | Event Study Pipeline Phase A→D |
-| `test_frost_integration.py` | **24** | FROST E2E (Writer/Runner/HardGates/Bridges/DataQuality/Report) |
+| `test_frost_integration.py` | 24 | FROST E2E (Writer/Runner/HardGates/Bridges/DataQuality/Report) |
+| `test_golden_check.py` | 40 | golden_check ロジック単体 (_normalize / diff_tables / _is_volatile) |
 
-**合計: 278 passed**
+**合計: 906 passed, 24 skipped**
 
 ---
 
@@ -614,7 +619,7 @@ cd /home/user/prostock
 # v2 レイヤー単体テスト (58 tests)
 python3 -W ignore -m pytest tests/unit/test_frost_v2_layers.py -v
 
-# 全スイート (312 passed, 24 skipped)
+# 全スイート (906 passed, 24 skipped)
 python3 -W ignore -m pytest tests/ -q --tb=no
 ```
 
