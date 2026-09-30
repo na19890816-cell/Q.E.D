@@ -160,6 +160,9 @@ class FrostConfig:
     max_signal_corr: float = 0.90
     """OOS シグナル相関の上限値 (v2 dedup gate)。"""
 
+    max_portfolio_corr: float = 0.60
+    """G2: 採用済みポートフォリオとの相関上限値。昇格先行ゲート。"""
+
     # ── Hard Gate 閾値 ────────────────────────────────────────────────────
     pbo_threshold: float = 0.20
     """PBO がこれを超えると hard gate FAIL (b1)。"""
@@ -457,6 +460,7 @@ def load_frost_config(overrides: Optional[dict] = None) -> FrostConfig:
         max_fsi=_env_float("FROST_FSI_MAX", 0.40),
         min_regime_entropy=_env_float("FROST_REGIME_ENTROPY_MIN", 0.60),
         max_signal_corr=_env_float("FROST_SIGNAL_CORR_MAX", 0.90),
+        max_portfolio_corr=_env_float("FROST_MAX_PORTFOLIO_CORR", 0.60),
 
         # ── Hard Gate ─────────────────────────────────────────────────────
         pbo_threshold=_env_float("FROST_PBO_THRESHOLD", 0.20),

@@ -139,8 +139,8 @@ class TestPolicySpecSerialization:
 
     def test_to_dict_hard_gates_count(self):
         spec = PolicySpec()
-        # v1: 8 個 + v2: 7 個 = 15 個
-        assert len(spec.to_dict()["hard_gates"]) == 15
+        # v1: 8 個 + v2: 7 個 + G2 (max_portfolio_corr): 1 個 = 16 個
+        assert len(spec.to_dict()["hard_gates"]) == 16
 
     def test_roundtrip_hash_preservation(self):
         """to_dict → from_dict でハッシュが変わらない"""

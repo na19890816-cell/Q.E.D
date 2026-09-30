@@ -130,6 +130,8 @@ class PolicySpec:
     max_fsi: float = 0.40
     min_regime_entropy: float = 0.60
     max_signal_corr: float = 0.90
+    # G2: 採用済みポートフォリオとの相関ゲート (r < max_portfolio_corr)
+    max_portfolio_corr: float = 0.60
 
     # ── [selection] 選抜制御 ──────────────────────────────────────────────
     top_k: int = 25
@@ -209,6 +211,7 @@ class PolicySpec:
                 "max_fsi":                   self.max_fsi,
                 "min_regime_entropy":        self.min_regime_entropy,
                 "max_signal_corr":           self.max_signal_corr,
+                "max_portfolio_corr":         self.max_portfolio_corr,
             },
             "selection": {
                 "top_k":                     self.top_k,
@@ -290,6 +293,7 @@ class PolicySpec:
             max_fsi=                    float(g.get("max_fsi",                   0.40)),
             min_regime_entropy=         float(g.get("min_regime_entropy",        0.60)),
             max_signal_corr=            float(g.get("max_signal_corr",           0.90)),
+            max_portfolio_corr=         float(g.get("max_portfolio_corr",        0.60)),
             # selection
             top_k=                      int(  s.get("top_k",                     25  )),
             promotion_top_k=            int(  s.get("promotion_top_k",           5   )),
@@ -530,6 +534,7 @@ def policy_spec_from_frost_config(cfg: Any) -> PolicySpec:
         max_fsi=                    cfg.max_fsi,
         min_regime_entropy=         cfg.min_regime_entropy,
         max_signal_corr=            cfg.max_signal_corr,
+        max_portfolio_corr=         getattr(cfg, "max_portfolio_corr", 0.60),
         # selection
         top_k=                      cfg.top_k,
         promotion_top_k=            cfg.promotion_top_k,
@@ -606,6 +611,7 @@ def policy_spec_to_frost_config(spec: PolicySpec) -> Any:
         max_fsi=                    spec.max_fsi,
         min_regime_entropy=         spec.min_regime_entropy,
         max_signal_corr=            spec.max_signal_corr,
+        max_portfolio_corr=         spec.max_portfolio_corr,
         # selection
         top_k=                      spec.top_k,
         promotion_top_k=            spec.promotion_top_k,
@@ -717,6 +723,7 @@ def load_policy_spec(
         max_fsi=                    _env_float("FROST_FSI_MAX",                    0.40),
         min_regime_entropy=         _env_float("FROST_REGIME_ENTROPY_MIN",         0.60),
         max_signal_corr=            _env_float("FROST_SIGNAL_CORR_MAX",            0.90),
+        max_portfolio_corr=         _env_float("FROST_MAX_PORTFOLIO_CORR",          0.60),
         # selection
         top_k=                      _env_int(  "FROST_TOP_K",                      25  ),
         promotion_top_k=            _env_int(  "FROST_PROMOTION_TOP_K",            5   ),

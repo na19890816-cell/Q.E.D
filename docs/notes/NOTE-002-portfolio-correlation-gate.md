@@ -1,11 +1,11 @@
 # NOTE-002 — 憲法ギャップ G2: 採用済みポートフォリオとの相関ゲート r<0.6 未実装
 
 **登録日**: 2026-06-13  
+**実装日**: 2026-09-30  
 **出典**: QED_REVIEW_2026-06-13.md §3「憲法ギャップ監査 — ギャップ2」  
 **種別**: 憲法ギャップ（外部提案ではなく、設計憲法が既に義務付けている未実装項目）  
 **優先度**: 高（憲法違反）  
-**ステータス**: Note登録済み・未実装  
-**コード変更**: なし（Note登録のみ）
+**ステータス**: ✅ 実装完了 — `portfolio_correlation_gate.py` / `policy_spec.py`・`frost_config.py` 更新済み
 
 ---
 
@@ -100,3 +100,43 @@ NOTE-002 (相関ゲート r<0.6)
 - 設計憲法（r<0.6 相関ゲート義務）
 - `analytics/python/frost/dedup_stage.py` — 現行の候補同士重複排除（DedupStage）
 - `frost_promotion_policy.md` — 昇格フロー定義
+
+---
+
+## 7. 実装記録 (2026-09-30)
+
+### 変更ファイル
+
+| ファイル | 変更内容 |
+|---|---|
+| `analytics/python/frost/portfolio_correlation_gate.py` | **新規作成** — G2 ゲート本体 |
+| `analytics/python/frost/policy_spec.py` | `max_portfolio_corr: float = 0.60` フィールド追加 (to_dict / from_dict / from_frost_config / to_frost_config / load_policy_spec) |
+| `analytics/python/frost/frost_config.py` | `max_portfolio_corr: float = 0.60` フィールド追加 (from_env) |
+| `tests/unit/test_phase2_portfolio_correlation_gate.py` | **新規作成** — 62 tests / 8 クラス |
+| `tests/unit/test_phase1_policy_spec.py` | `test_to_dict_hard_gates_count` を 15→16 に更新 |
+
+### 公開 API
+
+```python
+from analytics.python.frost.portfolio_correlation_gate import (
+    PortfolioCorrelationGate,         # クラス API
+    check_portfolio_correlation_gate, # 関数型ラッパー
+    PortfolioGateResult,
+    SingleCorrResult,
+)
+
+gate = PortfolioCorrelationGate.from_config(policy_spec)
+result = gate.check(
+    candidate_signal=[...],
+    promoted_signals={"artifact_id": [...], ...},
+)
+if not result.passed:
+    print(result.failure_reason)      # "OOS 相関 r=0.8500 が閾値 0.6000 を超過..."
+    print(result.to_dict())           # FrostEvaluation.diagnostics_json 格納用
+```
+
+### テスト結果
+
+```
+62 passed in 0.27s ✅ (全テストスイート: 1056 passed, 24 skipped)
+```
