@@ -24,6 +24,7 @@ import pandas as pd
 from .eml_core import EML_DEPTH_MAX, EML_DEPTH_MIN
 from .eml_search import (
     EMLCandidate,
+    SearchStats,
     exhaustive_search,
     gradient_search,
 )
@@ -44,6 +45,9 @@ class EMLDiscoveryConfig:
     trace_id: str                   = field(default_factory=lambda: str(uuid.uuid4()))
     batch_label: str                = field(default_factory=lambda: os.environ.get("EML_BATCH_LABEL", "eml_v1"))
     target_horizon: str             = field(default_factory=lambda: os.environ.get("EML_ALPHA_TARGET_HORIZON", "5d"))
+    # ADR-002 family_key 構成要素 (系譜ログ用。探索・評価ロジックには使わない)
+    universe: str                   = field(default_factory=lambda: os.environ.get("EML_UNIVERSE", "event_study_panel"))
+    target_name: str                = field(default_factory=lambda: os.environ.get("EML_TARGET_NAME", "abnormal_return"))
     max_depth: int                  = field(default_factory=lambda: int(os.environ.get("EML_ALPHA_MAX_DEPTH", "3")))
     terminal_set: List[str]         = field(default_factory=list)
 
@@ -94,6 +98,21 @@ class EMLDiscoveryOutput:
     rejected: List[EMLCandidate]
     total_searched: int
     terminal_set_hash: str
+    # ADR-002: top_k 切り捨て前の探索統計 (DSR の試行数 N の元データ)
+    search_stats: List[SearchStats] = field(default_factory=list)
+    target_horizon: str = "5d"
+    universe: str = ""
+    target_name: str = ""
+
+    @property
+    def n_trials_evaluated(self) -> int:
+        """fitness を計算した木の総数 (total_searched は top_k 後の件数である点に注意)。"""
+        return sum(s.n_evaluated for s in self.search_stats)
+
+    @property
+    def n_trials(self) -> int:
+        """DSR 用試行数 = 探索呼び出しごとの異なる式数の合計 (ADR-002 §4.2)。"""
+        return sum(s.n_trials for s in self.search_stats)
 
 
 def run_eml_discovery(
@@ -133,6 +152,7 @@ def run_eml_discovery(
     # 探索
     # ------------------------------------------------------------------ #
     candidates: List[EMLCandidate] = []
+    search_stats: List[SearchStats] = []
 
     if config.use_exhaustive:
         ex_depth = min(config.exhaustive_max_depth, max_depth)
@@ -145,6 +165,7 @@ def run_eml_discovery(
             target=target,
             fitness_fn=simple_rank_ic_fitness,
             top_k=config.top_k_exhaustive,
+            stats_out=search_stats,
         )
         candidates.extend(ex_cands)
 
@@ -161,6 +182,7 @@ def run_eml_discovery(
             adam_steps=config.gradient_steps,
             top_k=config.top_k_gradient,
             rng_seed=config.rng_seed,  # golden run の決定論性確保
+            stats_out=search_stats,
         )
         candidates.extend(gr_cands)
 
@@ -255,4 +277,8 @@ def run_eml_discovery(
         rejected=rejected,
         total_searched=total_searched,
         terminal_set_hash=ts_hash,
+        search_stats=search_stats,
+        target_horizon=config.target_horizon,
+        universe=config.universe,
+        target_name=config.target_name,
     )

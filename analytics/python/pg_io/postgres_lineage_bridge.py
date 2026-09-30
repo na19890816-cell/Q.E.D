@@ -119,6 +119,17 @@ def insert_lineage_edge(
         return (getattr(cur, "rowcount", 0) or 0) > 0
 
 
+def ledger_tables_exist(conn: psycopg.Connection) -> bool:
+    """migration 084 が適用済みか (両テーブルの存在) を返す。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT to_regclass('public.qed_trial_batches') IS NOT NULL "
+            "   AND to_regclass('public.qed_lineage_edges') IS NOT NULL"
+        )
+        row = cur.fetchone()
+    return bool(row and row[0])
+
+
 # ---------------------------------------------------------------------------
 # 読み出し
 # ---------------------------------------------------------------------------

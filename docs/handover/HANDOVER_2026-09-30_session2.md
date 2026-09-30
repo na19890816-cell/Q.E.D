@@ -4,7 +4,7 @@
 **リポジトリ**: `https://github.com/na19890816-cell/Q.E.D.git`  
 **ブランチ**: `main`  
 **前回引き継ぎ書**: `docs/handover/HANDOVER_2026-09-30.md` (Phase 3 完了時点, commit `85cde61`)  
-**テスト状態**: ✅ `1423 passed, 27 skipped` (skip は全て `QED_PG_DSN` 未設定の統合テスト)
+**テスト状態**: ✅ `1454 passed, 27 skipped` (skip は全て `QED_PG_DSN` 未設定の統合テスト)
 
 ---
 
@@ -57,6 +57,19 @@ NOTE-001（憲法ギャップ最優先）を実装。
 - テスト: `tests/unit/test_adr002_lineage.py` (108) + `tests/integration/test_adr002_lineage_pg.py` (3, 実 PG)
 - **実 PostgreSQL 17 で検証済み**: migration 冪等適用 / UPDATE・DELETE 拒否 / CHECK 制約 / 系譜遡及・循環・as-of / DSR 連携
 
+### ADR-002 S1 — 探索側の試行数記録 (本セッション最後)
+
+- `eml_search.exhaustive_search` / `gradient_search` に任意引数 `stats_out` を追加し `SearchStats` を記録
+  （戻り値・既存引数は不変。**旧コミットとの `run_eml_discovery` 出力バイト一致を確認** = golden 非影響）
+- `EMLDiscoveryOutput` に `search_stats` / `n_trials` / family 構成要素（`EML_UNIVERSE`, `EML_TARGET_NAME`）
+- `analytics/python/alpha/eml/eml_lineage.py`: 探索結果 → `TrialBatch`
+- `run_eml_pipeline.py` Phase C': 台帳へ追記（dry_run でも記録 / `EML_LINEAGE_ENABLED=0` で無効 / 084 未適用ならスキップ）
+- **実 PostgreSQL で `run_eml_pipeline.py` を実行して台帳記録・再実行時の冪等性を確認**
+- **重要な発見（ADR-002 §4.7）**: exhaustive は 93,347 本の木を評価するが、未学習のセレクタが全て左を選ぶため
+  異なる式は **17 個**（端子 16 + 定数）しかない。N = 木の数だと DSR が 0.99 → 0.55 に落ちる過大計上になるため、
+  試行 = **異なる式の数** と定義した。探索自体がほぼ冗長である点は別途 Note 化を推奨
+- テスト: `tests/unit/test_adr002_s1_search_stats.py` (31)
+
 ### ドキュメント
 - `docs/notes/NOTE-001-deflated-sharpe-ratio.md` §8 実装記録追加・ステータス更新
 - `docs/notes/README.md` インデックス更新
@@ -92,10 +105,8 @@ NOTE-001（憲法ギャップ最優先）を実装。
 ## 4. 次セッションへの引き継ぎ（推奨順）
 
 1. **ADR-002 の承認**（Proposed → Accepted）。特に family_key 粒度（horizon × universe × target × terminal_set）と N_raw 既定
-2. **ADR-002 S1: 探索側の書き込み点**
-   - `exhaustive_search` / `gradient_search` が top_k 前の評価総数と fitness 統計を返すよう拡張し、`TrialBatch` を記録
-   - 戻り値の型変更は golden に影響しうるため、golden check で決定不変を確認してから
-   - `candidate_hash` の安定化（ADR-002 §10 TODO）は別コミットで golden 影響評価込み
+2. ~~ADR-002 S1: 探索側の書き込み点~~ ✅ 完了。残り: exhaustive 縮退の Note 登録 / S2（FROST 側）/
+   `candidate_hash` の安定化（ADR-002 §10 TODO、golden 影響評価込み）
 3. **昇格 Bridge への G1/G2 ゲート配線**（台帳 snapshot → DsrGate、snapshot_hash を audit_events へ）: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
    本番コードから呼ばれていない（テストのみ）。`postgres_event_study_knowledge_artifact_bridge.py` 等の
    昇格フローに組み込み、結果を audit_events に記録する

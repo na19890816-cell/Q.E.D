@@ -49,6 +49,14 @@ from analytics.python.io.postgres_eml_alpha_writer import (
     upsert_alpha_candidates,
     upsert_alpha_run,
 )
+from analytics.python.alpha.eml.eml_lineage import (
+    eml_family_key,
+    trial_batches_from_eml_output,
+)
+from analytics.python.pg_io.postgres_lineage_bridge import (
+    insert_trial_batches,
+    ledger_tables_exist,
+)
 from analytics.python.io.postgres_eml_backtest_writer import (
     upsert_backtest_folds,
     upsert_backtest_run,
@@ -99,6 +107,35 @@ def _load_panel(conn: psycopg.Connection, limit: int = 5000) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=cols)
     df["metric"] = df["metric"].astype(float)
     return df
+
+
+def _record_trial_ledger(conn: psycopg.Connection, output) -> dict:
+    """
+    ADR-002 S1: 探索統計を qed_trial_batches へ追記する。
+
+    - EML_LINEAGE_ENABLED=0 で無効化 (既定 1)
+    - migration 084 未適用なら警告してスキップ (既存環境を壊さない)
+    - テーブルがあるのに書き込みに失敗した場合は例外を送出する
+      (黙って欠落させると N の過少計上になるため)。batch_id は決定論的なので再実行で重複しない
+    """
+    if os.environ.get("EML_LINEAGE_ENABLED", "1") != "1":
+        log.warning("  [lineage] EML_LINEAGE_ENABLED!=1 — 試行台帳への記録をスキップ")
+        return {"status": "disabled"}
+    if not ledger_tables_exist(conn):
+        log.warning("  [lineage] qed_trial_batches 未作成 (migration 084 未適用) — 記録をスキップ")
+        return {"status": "skipped_no_table"}
+    batches = trial_batches_from_eml_output(output)
+    inserted = insert_trial_batches(conn, batches)
+    conn.commit()
+    info = {
+        "status": "recorded",
+        "family_key": eml_family_key(output),
+        "batches": len(batches),
+        "inserted": inserted,
+        "n_trials": sum(b.n_trials for b in batches),
+    }
+    log.info(f"  [lineage] {info}")
+    return info
 
 
 # ------------------------------------------------------------------ #
@@ -195,6 +232,12 @@ def run_eml_pipeline() -> dict:
         log.info(f"  eml_alpha_runs / eml_alpha_candidates UPSERT 完了")
 
         # ---------------------------------------------------------- #
+        # Phase C': ADR-002 試行台帳 (DSR の試行数 N)
+        #   dry_run でも記録する: 探索は実際に行われており、過少計上は DSR を楽観化する
+        # ---------------------------------------------------------- #
+        lineage = _record_trial_ledger(conn, output)
+
+        # ---------------------------------------------------------- #
         # Phase D: バックテスト (walk-forward)
         # ---------------------------------------------------------- #
         log.info("Phase D: Walk-forward バックテスト")
@@ -262,6 +305,9 @@ def run_eml_pipeline() -> dict:
             "promo_rejected":  len(rejected),
             "promo_dry_run":   len(dry_runs),
             "terminal_set_hash": output.terminal_set_hash,
+            "n_trials_evaluated": output.n_trials_evaluated,
+            "n_trials":        output.n_trials,
+            "lineage":         lineage,
         }
 
         log.info("=== EML Pipeline Completed ===")

@@ -18,7 +18,7 @@ DSR（NOTE-001）は「そのアルファに到達するまでに探索した試
 
 | # | 欠落 | 所在 | 影響 |
 |---|------|------|------|
-| L1 | **評価したが保存しない試行が消える** | `eml_search.exhaustive_search` は全木を評価し `top_k` のみ返す。`eml_master_formula` の `total_searched = len(candidates)` は top_k 合計であり探索数ではない | N を桁違いに過少計上 → DSR が楽観化（最も危険な方向） |
+| L1 | **評価したが保存しない試行が消える** | `eml_search.exhaustive_search` は全木を評価し `top_k` のみ返す。`eml_master_formula` の `total_searched = len(candidates)` は top_k 合計であり探索数ではない | 探索数が残らず N を正しく数えられない。※S1 実測では exhaustive の縮退（§4.7）により異なる式は 17 個で、`total_searched`=24 と大差なかった。探索設計が変われば（重み学習付き列挙など）桁違いの過少計上になりうるため、記録基盤は依然必要 |
 | L2 | **run 横断の系統が追えない** | `eml_alpha_runs` / `frost_runs` は run 単位で閉じており、同じ研究課題を何 run 繰り返したかの紐付けがない | 「10 run × 各 100 候補」が N=100 に見える |
 | L3 | **候補の安定識別子がない** | `frost_runner.frost_candidates_from_eml` の `candidate_hash=str(hash(formula_text))[:16]` は PYTHONHASHSEED によりプロセスごとに変化する（実測で確認） | 同一式を run 間で同定できない。golden check の「candidate_hash は安定」という前提も実は成立していない |
 
@@ -54,7 +54,8 @@ lineage edge (派生)              ← parent family/candidate → child family/
   relation: mutation | retrain | param_tweak | manual_edit | ensemble_member
 ```
 
-- **試行 (trial)**: fitness を 1 回以上計算した候補式 1 つ。保存有無は問わない
+- **試行 (trial)**: fitness を 1 回以上計算した**異なる**候補式 1 つ。保存有無は問わない。
+  同一の compiled_expr を複数の木から評価しても、同じ仮説の再検定なので 1 試行（§4.7）
 - **family**: 「同じ問いに対する探索」の単位。family_key が同じ試行は同一の多重検定母集団とみなす
 - **batch**: 1 回の探索呼び出し（exhaustive / gradient / 手動投入 等）。件数と SR 統計のみを持つ
 
@@ -108,7 +109,7 @@ qed_lineage_edges (
 
 | 段 | 書き込み点 | 記録内容 | 本 ADR での扱い |
 |---|---|---|---|
-| S1 | `eml_search.exhaustive_search` / `gradient_search` | `len(trees)` / `n_init`（top_k 前の全評価数）+ fitness 統計 | **次フェーズ**（探索関数の戻り値に件数を追加する必要があり、golden 影響を検証してから） |
+| S1 | `eml_search.exhaustive_search` / `gradient_search` | top_k 前の**異なる式数**（+ 木の数・fitness 統計は metadata） | ✅ **実装済み**（任意引数 `stats_out`。旧版との出力バイト一致で golden 非影響を確認） |
 | S2 | `frost_runner.run_frost_pipeline` | FROST 評価候補数 + oos_sharpe 統計 | 次フェーズ |
 | S3 | 手動投入 / 外部アルファ | `stage='manual'` で件数を申告 | 次フェーズ（CLI） |
 | 読み出し | 昇格 Bridge → `DsrGate.check(n_trials=N, sr_variance=V)` | snapshot を audit に記録 | 次フェーズ |
@@ -121,6 +122,33 @@ qed_lineage_edges (
 - family_key の粒度を変える（例: universe を粗くする）変更は PolicySpec 相当の重大変更として ADR 改訂を要する
 - 台帳が空の family で DSR を求めた場合は、従来どおり `n_trials_source="assumed"` + `review_required=True`
 
+### 4.7 S1 実装で判明した事実: exhaustive の縮退（2026-09-30）
+
+EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 → 左選択` であり、`exhaustive_search` が
+列挙する木は重みを学習しないため、**全て「最左の葉（端子 or 定数）」に縮退する**。
+
+| 実測（16 端子, depth≤2） | 値 |
+|---|---|
+| 評価した木 | 93,347 |
+| 異なる compiled_expr | **17**（16 端子 + 定数 `1.0`） |
+| 旧 `total_searched`（top_k 合計） | 24 |
+
+したがって N を「木の数」で数えると約 5,500 倍の過大計上になり、同じリターンで DSR が 0.99 → 0.55 に落ちる。
+試行の定義を **異なる式の数** とした（§4.1）。木の数・fitness 呼び出し数は `metadata.search_stats` に保存し、
+定義変更時に再集計できるようにしている。
+
+- exhaustive と gradient が同じ式に到達した場合は両 batch に計上する（stage 横断の重複排除はしない = 保守側）
+- run を跨いで同じ式を再評価した場合も各 run に計上する（同じ family で再試行したこと自体が多重比較）
+- **別課題（本 ADR 外）**: exhaustive が 93k 評価で 17 式しか生まないのは探索として非効率で、
+  ほぼ全ての計算が冗長。探索設計の見直し候補として Note 登録を推奨
+
+### 4.8 SR 統計（V[SR]）を記録しない理由
+
+- 探索時 fitness は rank IC であり Sharpe ではない
+- 評価段階の Sharpe は top_k 生存者のみ = 選択後の標本で、試行間分散を**過小**推定する → SR0 が下がり DSR が楽観化
+- よって EML batch の `sr_stats` は空とし、DSR は SR 推定量分散（帰無仮説下の標本分散）へフォールバックさせる。
+  生存者 Sharpe は `metadata.survivor_sharpe_daily` に参考値として残す
+
 ## 5. 実装（本 ADR と同時に追加）
 
 | ファイル | 内容 |
@@ -129,6 +157,10 @@ qed_lineage_edges (
 | `analytics/python/frost/frost_lineage.py` | 純 Python: `formula_hash` / `make_family_key` / `SharpeStats` / `TrialBatch` / `LineageEdge` / `TrialLedger` / `TrialSnapshot` |
 | `analytics/python/pg_io/postgres_lineage_bridge.py` | 台帳の insert（冪等）/ load / snapshot 取得 |
 | `tests/unit/test_adr002_lineage.py` | DB レス単体テスト（marker `adr002_lineage`） |
+| `analytics/python/alpha/eml/eml_search.py` | S1: `SearchStats` + 任意引数 `stats_out`（戻り値・既存引数は不変） |
+| `analytics/python/alpha/eml/eml_lineage.py` | S1: `EMLDiscoveryOutput` → `TrialBatch` 変換 |
+| `scripts/postgres/run_eml_pipeline.py` | S1: Phase C' で台帳へ追記（`EML_LINEAGE_ENABLED=0` で無効、084 未適用ならスキップ） |
+| `tests/unit/test_adr002_s1_search_stats.py` | S1 テスト（stats_out 有無での出力一致を含む） |
 
 ## 6. 帰結
 
@@ -158,5 +190,7 @@ qed_lineage_edges (
 ## 10. TODO（本 ADR 外）
 
 - [ ] `frost_runner.frost_candidates_from_eml` の `candidate_hash` を `formula_hash` 由来の安定値へ置換（golden 影響評価込み）
-- [ ] S1: `exhaustive_search` / `gradient_search` が評価総数と fitness 統計を返すよう拡張
+- [x] S1: `exhaustive_search` / `gradient_search` が評価総数と fitness 統計を返すよう拡張（2026-09-30）
+- [ ] exhaustive の縮退（§4.7）を Note 登録し、探索設計の見直しを検証サイクルへ
+- [ ] S2: `frost_runner` での FROST 評価候補数の記録（source_type ≠ eml の候補の N）
 - [ ] 昇格 Bridge で `TrialLedger.snapshot()` → `DsrGate.check()` を配線し、snapshot_hash を audit_events へ
