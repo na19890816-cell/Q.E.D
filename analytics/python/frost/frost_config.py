@@ -163,6 +163,19 @@ class FrostConfig:
     max_portfolio_corr: float = 0.60
     """G2: 採用済みポートフォリオとの相関上限値。昇格先行ゲート。"""
 
+    # ── G3: Detect→Kill ライフサイクル (CUSUM) ──────────────────────────
+    cusum_k: float = 0.5
+    """G3: CUSUM 許容ドリフト k。"""
+
+    cusum_h: float = 5.0
+    """G3: CUSUM 警告閾値 h。"""
+
+    cusum_mu0: float = 0.0
+    """G3: CUSUM 正常時 IC 期待値 mu0。"""
+
+    lifecycle_min_ic_len: int = 10
+    """G3: CUSUM 検査に必要な最小 rolling IC 点数。"""
+
     # ── Hard Gate 閾値 ────────────────────────────────────────────────────
     pbo_threshold: float = 0.20
     """PBO がこれを超えると hard gate FAIL (b1)。"""
@@ -332,6 +345,14 @@ class FrostConfig:
         if not (0.0 <= self.min_selection_stability <= 1.0):
             errors.append(f"min_selection_stability={self.min_selection_stability} は [0, 1] の範囲である必要があります")
 
+        # G3: CUSUM パラメータチェック
+        if self.cusum_k < 0.0:
+            errors.append(f"cusum_k={self.cusum_k} は 0 以上である必要があります")
+        if self.cusum_h <= 0.0:
+            errors.append(f"cusum_h={self.cusum_h} は正である必要があります")
+        if self.lifecycle_min_ic_len < 1:
+            errors.append(f"lifecycle_min_ic_len={self.lifecycle_min_ic_len} は 1 以上である必要があります")
+
         # top_k の正値チェック
         if self.top_k <= 0:
             errors.append(f"top_k={self.top_k} は 1 以上である必要があります")
@@ -461,6 +482,12 @@ def load_frost_config(overrides: Optional[dict] = None) -> FrostConfig:
         min_regime_entropy=_env_float("FROST_REGIME_ENTROPY_MIN", 0.60),
         max_signal_corr=_env_float("FROST_SIGNAL_CORR_MAX", 0.90),
         max_portfolio_corr=_env_float("FROST_MAX_PORTFOLIO_CORR", 0.60),
+
+        # ── G3: CUSUM ライフサイクル ──────────────────────────────────────
+        cusum_k=_env_float("FROST_CUSUM_K", 0.5),
+        cusum_h=_env_float("FROST_CUSUM_H", 5.0),
+        cusum_mu0=_env_float("FROST_CUSUM_MU0", 0.0),
+        lifecycle_min_ic_len=_env_int("FROST_LIFECYCLE_MIN_IC_LEN", 10),
 
         # ── Hard Gate ─────────────────────────────────────────────────────
         pbo_threshold=_env_float("FROST_PBO_THRESHOLD", 0.20),

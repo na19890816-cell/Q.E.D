@@ -132,6 +132,11 @@ class PolicySpec:
     max_signal_corr: float = 0.90
     # G2: 採用済みポートフォリオとの相関ゲート (r < max_portfolio_corr)
     max_portfolio_corr: float = 0.60
+    # G3: Detect→Kill ライフサイクル (CUSUM 劣化検知パラメータ)
+    cusum_k: float = 0.5
+    cusum_h: float = 5.0
+    cusum_mu0: float = 0.0
+    lifecycle_min_ic_len: int = 10
 
     # ── [selection] 選抜制御 ──────────────────────────────────────────────
     top_k: int = 25
@@ -212,6 +217,10 @@ class PolicySpec:
                 "min_regime_entropy":        self.min_regime_entropy,
                 "max_signal_corr":           self.max_signal_corr,
                 "max_portfolio_corr":         self.max_portfolio_corr,
+                "cusum_k":                   self.cusum_k,
+                "cusum_h":                   self.cusum_h,
+                "cusum_mu0":                 self.cusum_mu0,
+                "lifecycle_min_ic_len":      self.lifecycle_min_ic_len,
             },
             "selection": {
                 "top_k":                     self.top_k,
@@ -294,6 +303,10 @@ class PolicySpec:
             min_regime_entropy=         float(g.get("min_regime_entropy",        0.60)),
             max_signal_corr=            float(g.get("max_signal_corr",           0.90)),
             max_portfolio_corr=         float(g.get("max_portfolio_corr",        0.60)),
+            cusum_k=                    float(g.get("cusum_k",                   0.5 )),
+            cusum_h=                    float(g.get("cusum_h",                   5.0 )),
+            cusum_mu0=                  float(g.get("cusum_mu0",                 0.0 )),
+            lifecycle_min_ic_len=       int(  g.get("lifecycle_min_ic_len",      10  )),
             # selection
             top_k=                      int(  s.get("top_k",                     25  )),
             promotion_top_k=            int(  s.get("promotion_top_k",           5   )),
@@ -409,6 +422,13 @@ class PolicySpec:
             errors.append(f"max_complexity_score={self.max_complexity_score} は [0,1] である必要があります")
         if not (0.0 <= self.min_selection_stability <= 1.0):
             errors.append(f"min_selection_stability={self.min_selection_stability} は [0,1] である必要があります")
+
+        if self.cusum_k < 0.0:
+            errors.append(f"cusum_k={self.cusum_k} は 0 以上である必要があります")
+        if self.cusum_h <= 0.0:
+            errors.append(f"cusum_h={self.cusum_h} は正である必要があります")
+        if self.lifecycle_min_ic_len < 1:
+            errors.append(f"lifecycle_min_ic_len={self.lifecycle_min_ic_len} は 1 以上である必要があります")
 
         if self.top_k <= 0:
             errors.append(f"top_k={self.top_k} は 1 以上である必要があります")
@@ -535,6 +555,10 @@ def policy_spec_from_frost_config(cfg: Any) -> PolicySpec:
         min_regime_entropy=         cfg.min_regime_entropy,
         max_signal_corr=            cfg.max_signal_corr,
         max_portfolio_corr=         getattr(cfg, "max_portfolio_corr", 0.60),
+        cusum_k=                    getattr(cfg, "cusum_k", 0.5),
+        cusum_h=                    getattr(cfg, "cusum_h", 5.0),
+        cusum_mu0=                  getattr(cfg, "cusum_mu0", 0.0),
+        lifecycle_min_ic_len=       getattr(cfg, "lifecycle_min_ic_len", 10),
         # selection
         top_k=                      cfg.top_k,
         promotion_top_k=            cfg.promotion_top_k,
@@ -612,6 +636,10 @@ def policy_spec_to_frost_config(spec: PolicySpec) -> Any:
         min_regime_entropy=         spec.min_regime_entropy,
         max_signal_corr=            spec.max_signal_corr,
         max_portfolio_corr=         spec.max_portfolio_corr,
+        cusum_k=                    spec.cusum_k,
+        cusum_h=                    spec.cusum_h,
+        cusum_mu0=                  spec.cusum_mu0,
+        lifecycle_min_ic_len=       spec.lifecycle_min_ic_len,
         # selection
         top_k=                      spec.top_k,
         promotion_top_k=            spec.promotion_top_k,
@@ -653,6 +681,8 @@ _POLICY_ENV_VARS: List[str] = [
     "CAUSAL_DIRECTION_MIN_SCORE", "CAUSAL_INVARIANCE_MIN_PASS_RATIO",
     "ALPHA_GENOME_MIN_NOVELTY_SCORE", "FROST_CROWDING_R2_MAX",
     "FROST_FSI_MAX", "FROST_REGIME_ENTROPY_MIN", "FROST_SIGNAL_CORR_MAX",
+    "FROST_MAX_PORTFOLIO_CORR",
+    "FROST_CUSUM_K", "FROST_CUSUM_H", "FROST_CUSUM_MU0", "FROST_LIFECYCLE_MIN_IC_LEN",
     "FROST_TOP_K", "FROST_PROMOTION_TOP_K", "FROST_REQUIRE_AUDIT_PASS",
     "FROST_NEAR_DUPLICATE_THRESHOLD", "FROST_MAX_SAME_FAMILY",
     "FROST_REVIEW_REQUIRED_DEFAULT", "FROST_AUTO_APPROVE_LOW_RISK",
@@ -724,6 +754,10 @@ def load_policy_spec(
         min_regime_entropy=         _env_float("FROST_REGIME_ENTROPY_MIN",         0.60),
         max_signal_corr=            _env_float("FROST_SIGNAL_CORR_MAX",            0.90),
         max_portfolio_corr=         _env_float("FROST_MAX_PORTFOLIO_CORR",          0.60),
+        cusum_k=                    _env_float("FROST_CUSUM_K",                    0.5 ),
+        cusum_h=                    _env_float("FROST_CUSUM_H",                    5.0 ),
+        cusum_mu0=                  _env_float("FROST_CUSUM_MU0",                  0.0 ),
+        lifecycle_min_ic_len=       _env_int(  "FROST_LIFECYCLE_MIN_IC_LEN",       10  ),
         # selection
         top_k=                      _env_int(  "FROST_TOP_K",                      25  ),
         promotion_top_k=            _env_int(  "FROST_PROMOTION_TOP_K",            5   ),
