@@ -1,7 +1,7 @@
 # prostock — EML Alpha Discovery & FROST Meta-Fitness Engine
 
 **プロジェクト**: Q.E.D. EML Alpha Discovery / Backtest / FROST Phase 5 Selection Pipeline  
-**ステータス**: ✅ 実装完了・全テスト通過 (906 passed, 24 skipped)  
+**ステータス**: ✅ 実装完了・全テスト通過 (994 passed, 24 skipped)  
 **最終更新**: 2026-06-13
 
 ---
@@ -123,6 +123,7 @@ fitness = 0.30 × rank_IC
 | `test_phase7_numpy_accel.py` | 44 | numpy 加速版 数値同等性・速度 (ADR-001, Phase 7) |
 | `test_phase8_meta_validator.py` | 66 | MetaValidator R01〜R05 整合性 (Phase 8) |
 | `test_phase9_dead_code.py` | 40 | statistics 完全除去・未使用引数削除 (Phase 9) |
+| `test_phase1_policy_bridge.py` | 48 | postgres_policy_bridge.py DB レス単体テスト — upsert/load/touch/set_run/fetch/list (Phase 1) |
 
 ### 統合テスト / golden テスト
 
@@ -132,8 +133,9 @@ fitness = 0.30 × rank_IC
 | `test_pipeline_integration.py` | — | Event Study Pipeline Phase A→D |
 | `test_frost_integration.py` | 24 | FROST E2E (Writer/Runner/HardGates/Bridges/DataQuality/Report) |
 | `test_golden_check.py` | 40 | golden_check ロジック単体 (_normalize / diff_tables / _is_volatile) |
+| `test_golden_determinism.py` | 40 | golden-determinism DB レス証明 — Layer A〜E (double-snapshot diff=0, Phase 0) |
 
-**合計: 906 passed, 24 skipped**
+**合計: 994 passed, 24 skipped**
 
 ---
 
@@ -619,7 +621,7 @@ cd /home/user/prostock
 # v2 レイヤー単体テスト (58 tests)
 python3 -W ignore -m pytest tests/unit/test_frost_v2_layers.py -v
 
-# 全スイート (906 passed, 24 skipped)
+# 全スイート (994 passed, 24 skipped)
 python3 -W ignore -m pytest tests/ -q --tb=no
 ```
 
