@@ -632,6 +632,17 @@ SR0 = √V[SR] · ((1−γ)·Φ⁻¹(1−1/N) + γ·Φ⁻¹(1−1/(N·e)))
 N の過少申告は DSR を楽観化するため、仮定値での合格は必ず人間レビューを経る。
 ADR-002 系譜ログで run 横断の累積試行数が集計可能になった時点で `n_trials` を明示供給に切り替える。
 
+**ADR-002 試行台帳からの供給（2026-09-30 実装）**:
+
+```python
+from analytics.python.pg_io.postgres_lineage_bridge import fetch_trial_snapshot
+snap = fetch_trial_snapshot(conn, family_key, as_of=decision_time, sr_periodicity="daily")
+res  = DsrGate.from_config(policy_spec).check(oos_daily_returns, **snap.to_dsr_kwargs())
+audit_payload = {"dsr": res.to_dict(), "ledger": snap.to_dict()}   # snapshot_hash で再現可能
+```
+
+台帳が空の family では `to_dsr_kwargs()` が `{}` を返し、従来どおり `assumed` + 人間レビューになる。
+
 ### 16.4 使用例
 
 ```python

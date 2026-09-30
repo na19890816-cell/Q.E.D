@@ -4,7 +4,7 @@
 **リポジトリ**: `https://github.com/na19890816-cell/Q.E.D.git`  
 **ブランチ**: `main`  
 **前回引き継ぎ書**: `docs/handover/HANDOVER_2026-09-30.md` (Phase 3 完了時点, commit `85cde61`)  
-**テスト状態**: ✅ `1315 passed, 24 skipped` (skip は全て `QED_PG_DSN` 未設定の統合テスト)
+**テスト状態**: ✅ `1423 passed, 27 skipped` (skip は全て `QED_PG_DSN` 未設定の統合テスト)
 
 ---
 
@@ -44,6 +44,19 @@ NOTE-001（憲法ギャップ最優先）を実装。
 - **論文数値例を再現**: 年率 SR 2.5 / T=1250 / N=100 / V=0.5 / 歪度 −3 / 尖度 10 → DSR = 0.9004
 - `test_phase1_policy_spec.py::test_to_dict_hard_gates_count` 16 → 22
 
+### ADR-002 — 系譜ログ（試行台帳 B 設計）(本セッション後半)
+
+- `docs/adr/ADR-002-lineage-trial-ledger.md`（**Status: Proposed — Nao の承認待ち**）
+  - 原ドラフトがリポジトリに無いため、レビュー / NOTE-001 / 計画書の参照から要件を逆算して再構成（§9 に照合項目）
+  - 調査で判明した欠落: **L1** exhaustive は全木評価→top_k のみ保存（N を桁違いに過少計上）/
+    **L2** run 横断の系統なし / **L3** `candidate_hash=str(hash(...))` は PYTHONHASHSEED 依存で run 間同定不能（実測）
+- `qedschema/migrations/084_qed_trial_ledger.sql`: `qed_trial_batches` / `qed_lineage_edges` / append-only トリガ / `v_qed_family_trial_totals`
+- `analytics/python/frost/frost_lineage.py`（純 Python）: `formula_hash` / `make_family_key` / `SharpeStats`（Welford 並列合成）/
+  `TrialBatch` / `LineageEdge` / `TrialLedger.snapshot(family, as_of, sr_periodicity)` / `TrialSnapshot.to_dsr_kwargs()`
+- `analytics/python/pg_io/postgres_lineage_bridge.py`: 冪等 INSERT / 再帰 CTE による祖先 family 取得 / snapshot
+- テスト: `tests/unit/test_adr002_lineage.py` (108) + `tests/integration/test_adr002_lineage_pg.py` (3, 実 PG)
+- **実 PostgreSQL 17 で検証済み**: migration 冪等適用 / UPDATE・DELETE 拒否 / CHECK 制約 / 系譜遡及・循環・as-of / DSR 連携
+
 ### ドキュメント
 - `docs/notes/NOTE-001-deflated-sharpe-ratio.md` §8 実装記録追加・ステータス更新
 - `docs/notes/README.md` インデックス更新
@@ -78,14 +91,16 @@ NOTE-001（憲法ギャップ最優先）を実装。
 
 ## 4. 次セッションへの引き継ぎ（推奨順）
 
-1. **ADR-002 系譜ログ設計**（DSR の N 供給元。現状唯一の G1 残課題）
-   - `knowledge_artifacts` に `lineage_id` / `trial_count` を持たせるか、別テーブルで run 横断試行を集計
-   - 集計後、昇格 Bridge で `DsrGate.check(returns, n_trials=..., trial_sharpes=...)` に供給
-2. **昇格 Bridge への G1/G2 ゲート配線**: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
+1. **ADR-002 の承認**（Proposed → Accepted）。特に family_key 粒度（horizon × universe × target × terminal_set）と N_raw 既定
+2. **ADR-002 S1: 探索側の書き込み点**
+   - `exhaustive_search` / `gradient_search` が top_k 前の評価総数と fitness 統計を返すよう拡張し、`TrialBatch` を記録
+   - 戻り値の型変更は golden に影響しうるため、golden check で決定不変を確認してから
+   - `candidate_hash` の安定化（ADR-002 §10 TODO）は別コミットで golden 影響評価込み
+3. **昇格 Bridge への G1/G2 ゲート配線**（台帳 snapshot → DsrGate、snapshot_hash を audit_events へ）: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
    本番コードから呼ばれていない（テストのみ）。`postgres_event_study_knowledge_artifact_bridge.py` 等の
    昇格フローに組み込み、結果を audit_events に記録する
-3. **P8 軸 ablation** → DSR の gate_engine / スコア軸統合可否、NOTE-004 / 005 の gate-0 評価
-4. `qedschema/migrations/` に DSR 結果列（または frost_promotion_bridges の evidence JSON）を追加するか検討
+4. **P8 軸 ablation** → DSR の gate_engine / スコア軸統合可否、NOTE-004 / 005 の gate-0 評価
+5. `qedschema/migrations/` に DSR 結果列（または frost_promotion_bridges の evidence JSON）を追加するか検討
 
 ---
 
@@ -96,6 +111,8 @@ cd /home/user/prostock
 python3 -W ignore -m pytest tests/ -q --tb=no           # 1315 passed, 24 skipped
 python3 -W ignore -m pytest -m phase4_dsr -q             # 116
 python3 -W ignore -m pytest -m phase4_policy_g3 -q       # 38
+python3 -W ignore -m pytest -m adr002_lineage -q         # 108 (+3 は QED_PG_DSN 設定時)
+QED_PG_DSN="..." python3 -W ignore -m pytest tests/integration/test_adr002_lineage_pg.py
 
 # DSR smoke
 python3 -c "

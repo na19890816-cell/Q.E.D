@@ -129,5 +129,9 @@ DSR は確率値 ∈ [0,1] であり、「DSR < 0」ではなく「DSR < min_dsr
 
 ### 8.4 残課題（ADR-002 依存）
 
+> 2026-09-30: ADR-002（`docs/adr/ADR-002-lineage-trial-ledger.md`, Proposed）で試行台帳の型・スキーマ・ブリッジを実装済み。
+> `TrialLedger.snapshot(family_key, as_of).to_dsr_kwargs()` を `DsrGate.check()` に渡せば N / V[SR] が台帳から供給される。
+> 残りは探索側の書き込み点（S1: exhaustive / gradient の全評価数記録）と昇格 Bridge への配線。
+
 - 試行回数 N は現状 `dsr_default_n_trials`（=1, 退化版 DSR = PSR(0)）を仮定。仮定時は `review_required=True` を強制
 - ADR-002 系譜ログで run 横断の累積試行数・兄弟候補 SR が集計できた時点で `n_trials` / `trial_sharpes` を供給する
