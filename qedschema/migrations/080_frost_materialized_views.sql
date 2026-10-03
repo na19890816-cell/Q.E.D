@@ -13,28 +13,35 @@ DO $$ BEGIN
     WHERE matviewname = 'frost_candidate_summary_mv'
   ) THEN
     CREATE MATERIALIZED VIEW frost_candidate_summary_mv AS
+    -- 修正 (2026-10-03): 旧定義は実在しない列 (fc.batch_label / fc.run_date / fc.source_system /
+    --   fe.oos_sharpe_score / fe.pbo_penalty / fd.decided_at) を参照し適用不能だった。実列へ対応付け:
+    --   batch_label → frost_runs.batch_label / run_date → frost_runs.started_at
+    --   source_system → source_type / oos_sharpe_score → oos_sharpe
+    --   pbo_penalty → pbo_score / decided_at → frost_selection_decisions.created_at
     SELECT
       fc.candidate_id,
-      fc.batch_label,
-      fc.run_date,
-      fc.source_system,
+      fr.batch_label,
+      fr.started_at                AS run_started_at,
+      fc.source_type,
       fc.trace_id,
       fe.run_id,
       fe.frost_score,
       fe.predictive_score,
-      fe.oos_sharpe_score,
+      fe.oos_sharpe,
       fe.regime_stability_score,
       fe.selection_consistency_score,
       fe.capacity_score,
-      fe.pbo_penalty,
+      fe.pbo_score,
       fe.turnover_penalty,
       fe.fragility_penalty,
       fe.complexity_penalty,
       fd.decision,
       fd.promotion_eligible,
       fd.review_required,
-      fd.decided_at
+      fd.created_at                AS decided_at
     FROM frost_fitness_candidates fc
+    JOIN frost_runs fr
+      ON fr.run_id = fc.run_id
     LEFT JOIN frost_evaluations fe
       ON fc.candidate_id = fe.candidate_id
     LEFT JOIN frost_selection_decisions fd
@@ -130,12 +137,12 @@ DO $$ BEGIN
       fd.decision,
       fd.promotion_eligible,
       fd.review_required,
-      fd.frost_score_at_decision,
-      fd.decided_at,
+      fd.frost_score               AS frost_score_at_decision,
+      fd.created_at                AS decided_at,
       fd.trace_id,
       ROW_NUMBER() OVER (
         PARTITION BY fd.candidate_id
-        ORDER BY fd.decided_at DESC
+        ORDER BY fd.created_at DESC
       ) AS decision_recency_rank
     FROM frost_selection_decisions fd;
 

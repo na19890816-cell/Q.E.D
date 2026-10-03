@@ -54,6 +54,30 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+#: RunContext の run_id (例 "frost__20261003_024025") を FROST の UUID 列へ写像する namespace
+_FROST_RUN_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "qed.frost.run_id")
+
+
+def normalize_frost_run_id(run_id: Optional[str]) -> str:
+    """
+    frost_runs.run_id (UUID 列) に格納可能な run_id を返す。
+
+    - None / 空 → 新規 uuid4
+    - UUID 文字列 → そのまま (正規化表記)
+    - それ以外 (RunContext 形式 "frost__<ts>" 等) → UUID5(namespace, run_id) で決定論的に写像
+      (同じ論理 run_id は常に同じ UUID になる = 再実行の UPSERT 安全性を保つ)
+
+    修正 (2026-10-03): 旧実装は RunContext の非 UUID run_id をそのまま渡し、
+    DB 書き込みが「invalid input syntax for type uuid」で必ず失敗していた。
+    """
+    if not run_id:
+        return str(uuid.uuid4())
+    try:
+        return str(uuid.UUID(str(run_id)))
+    except ValueError:
+        return str(uuid.uuid5(_FROST_RUN_ID_NAMESPACE, str(run_id)))
+
+
 # ---------------------------------------------------------------------------
 # メイン実行関数
 # ---------------------------------------------------------------------------
@@ -86,7 +110,7 @@ def run_frost_pipeline(
     FrostRunOutput
         実行結果。
     """
-    run_id   = run_id   or str(uuid.uuid4())
+    run_id   = normalize_frost_run_id(run_id)
     trace_id = trace_id or str(uuid.uuid4())
     started_at = _now()
 
@@ -186,23 +210,29 @@ def _upsert_policy(
 
     DB 接続がない場合・例外が発生した場合はサイレントにスキップ
     (policy upsert の失敗でパイプライン全体を止めない)。
+
+    修正 (2026-10-03): dry_run でも記録する。frost_runs / evaluations / decisions は
+    dry_run でも書かれる設計 (モジュール docstring) なのに、ポリシーだけ書かないと
+    dry_run の run は「どの閾値で判定したか」が再現できない (D10 の再発)。
+    ポリシースナップショットは破壊的書き込みではない。
     """
+    _policy_dry_run = False
     try:
         if conn is not None:
-            upsert_policy_spec(conn, policy_spec, dry_run=config.dry_run)
+            upsert_policy_spec(conn, policy_spec, dry_run=_policy_dry_run)
             set_run_policy_hash(
                 conn, output.run_id, policy_spec.policy_hash,
-                dry_run=config.dry_run,
+                dry_run=_policy_dry_run,
             )
         else:
             # 接続なし: DSN が設定されていれば一時接続を試みる
             try:
                 dsn = config.effective_pg_dsn()
                 with psycopg.connect(dsn) as tmp_conn:
-                    upsert_policy_spec(tmp_conn, policy_spec, dry_run=config.dry_run)
+                    upsert_policy_spec(tmp_conn, policy_spec, dry_run=_policy_dry_run)
                     set_run_policy_hash(
                         tmp_conn, output.run_id, policy_spec.policy_hash,
-                        dry_run=config.dry_run,
+                        dry_run=_policy_dry_run,
                     )
             except Exception:
                 pass  # DSN 未設定は許容 (ローカル/テスト環境)
@@ -338,10 +368,12 @@ def run_frost_pipeline_with_context(
     """
     # ctx の dry_run / verbose を config に反映する
     # (config を直接書き換えると副作用があるので上書きは最小限に)
+    # dataclasses.replace を使う (FrostConfig(**__dict__) は将来の init=False フィールドで壊れる)
+    from dataclasses import replace as _replace
     if ctx.dry_run and not config.dry_run:
-        config = FrostConfig(**{**config.__dict__, "dry_run": True})
+        config = _replace(config, dry_run=True)
     if ctx.verbose and not config.verbose:
-        config = FrostConfig(**{**config.__dict__, "verbose": True})
+        config = _replace(config, verbose=True)
 
     return run_frost_pipeline(
         candidates=candidates,
@@ -415,15 +447,23 @@ if __name__ == "__main__":
     )
 
     # FrostConfig 生成 (環境変数ベース + CLI オプション上書き)
-    config = FrostConfig.from_env()
+    # 修正 (2026-10-03): 旧コードは存在しない FrostConfig.from_env() を呼んでおり、
+    #   run_frost_engine.sh 経由の CLI は起動直後に AttributeError で必ず失敗していた。
+    from dataclasses import replace as _replace
+    from analytics.python.frost.frost_config import load_frost_config
+    _overrides = {}
     if args.dry_run:
-        config = FrostConfig(**{**config.__dict__, "dry_run": True})
+        _overrides["dry_run"] = True
     if args.verbose:
-        config = FrostConfig(**{**config.__dict__, "verbose": True})
+        _overrides["verbose"] = True
     if args.batch_label:
-        config = FrostConfig(**{**config.__dict__, "batch_label": args.batch_label})
+        _overrides["batch_label"] = args.batch_label
     if args.top_k is not None:
-        config = FrostConfig(**{**config.__dict__, "top_k": args.top_k})
+        _overrides["top_k"] = args.top_k
+    config = load_frost_config()
+    if _overrides:
+        config = _replace(config, **_overrides)
+        config.validate()
 
     if config.verbose:
         print(ctx.log_header())
@@ -431,6 +471,8 @@ if __name__ == "__main__":
     # 候補なし (CLI から直接呼ぶ場合は DB から取得するフローが別途必要)
     # ここでは「候補は外部から注入する」設計のためサンプルとして空リストで起動確認のみ
     candidates: List[FrostCandidate] = []
+    print("[frost_runner] WARNING: CLI は候補ローダー未実装のため 0 件で起動確認のみ行います",
+          file=_sys.stderr)
 
     output = run_frost_pipeline_with_context(
         candidates=candidates,

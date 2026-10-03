@@ -287,7 +287,10 @@ class TestFrostRunnerMain:
         config = self._make_config()
         # DB 書き込みをスキップ (conn=None + DSN 未設定は許容)
         output = run_frost_pipeline_with_context([], config, ctx)
-        assert output.run_id == "ctx_run_id"
+        # 2026-10-03: frost_runs.run_id は UUID 列のため、非 UUID の ctx.run_id は
+        # UUID5 で決定論的に写像される (ctx.run_id 由来であることは保たれる)
+        from analytics.python.frost.frost_runner import normalize_frost_run_id
+        assert output.run_id == normalize_frost_run_id("ctx_run_id")
 
     def test_with_context_uses_ctx_trace_id(self):
         from analytics.python.frost.frost_runner import run_frost_pipeline_with_context

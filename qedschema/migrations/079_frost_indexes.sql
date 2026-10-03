@@ -75,20 +75,23 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_indexes
-    WHERE indexname = 'idx_frost_cand_batch_run_date'
+    WHERE indexname = 'idx_frost_cand_run_created'
   ) THEN
-    CREATE INDEX idx_frost_cand_batch_run_date
-      ON frost_fitness_candidates (batch_label, run_date DESC NULLS LAST);
+    -- 修正 (2026-10-03): 旧定義は存在しない列 (batch_label, run_date) を参照しており適用不能だった。
+    -- batch_label は frost_runs 側の列のため、候補は run_id + created_at で引く。
+    CREATE INDEX idx_frost_cand_run_created
+      ON frost_fitness_candidates (run_id, created_at DESC);
   END IF;
 END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_indexes
-    WHERE indexname = 'idx_frost_cand_source_system_trace'
+    WHERE indexname = 'idx_frost_cand_source_type_trace'
   ) THEN
-    CREATE INDEX idx_frost_cand_source_system_trace
-      ON frost_fitness_candidates (source_system, trace_id);
+    -- 修正 (2026-10-03): 実列名は source_system ではなく source_type
+    CREATE INDEX idx_frost_cand_source_type_trace
+      ON frost_fitness_candidates (source_type, trace_id);
   END IF;
 END $$;
 
@@ -123,8 +126,9 @@ DO $$ BEGIN
     SELECT 1 FROM pg_indexes
     WHERE indexname = 'idx_eml_backtest_folds_run_candidate'
   ) THEN
+    -- 修正 (2026-10-03): eml_backtest_folds に run_id 列は無い (backtest_run_id が実列)
     CREATE INDEX idx_eml_backtest_folds_run_candidate
-      ON eml_backtest_folds (run_id, candidate_id);
+      ON eml_backtest_folds (backtest_run_id, candidate_id);
   END IF;
 END $$;
 

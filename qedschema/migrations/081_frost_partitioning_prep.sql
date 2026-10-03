@@ -149,7 +149,8 @@ DO $$ BEGIN
     CREATE FUNCTION frost_log_table_sizes()
     RETURNS VOID
     LANGUAGE plpgsql
-    AS $$
+    -- 修正 (2026-10-03): 外側 DO ブロックと同じドル引用タグで入れ子にしていたため構文エラーだった
+    AS $fn$
     DECLARE
       tbl TEXT;
       target_tables TEXT[] := ARRAY[
@@ -176,7 +177,7 @@ DO $$ BEGIN
         END;
       END LOOP;
     END;
-    $$;
+    $fn$;
 
     COMMENT ON FUNCTION frost_log_table_sizes() IS
       'FROST 関連テーブルのサイズを frost_table_size_log に記録する。
