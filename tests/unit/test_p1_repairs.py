@@ -127,3 +127,61 @@ class TestPolicyRecordedOnDryRun:
             fr._upsert_policy(out, spec, cfg, conn=MagicMock())
         assert up.call_args.kwargs["dry_run"] is False
         assert st.call_args.kwargs["dry_run"] is False
+
+
+# ---------------------------------------------------------------------------
+# P2: candidate_hash の決定論化 (ADR-002 L3)
+# ---------------------------------------------------------------------------
+
+from analytics.python.frost.frost_runner import stable_candidate_hash  # noqa: E402
+
+
+class TestStableCandidateHash:
+    def test_format(self):
+        h = stable_candidate_hash("r1*r5")
+        assert len(h) == 16 and int(h, 16) >= 0
+
+    def test_whitespace_insensitive(self):
+        assert stable_candidate_hash("r1 * r5") == stable_candidate_hash("r1*r5")
+
+    def test_distinct(self):
+        assert stable_candidate_hash("r1*r5") != stable_candidate_hash("r5*r1")
+
+    @pytest.mark.parametrize("v", ["", None, "   "])
+    def test_empty(self, v):
+        assert stable_candidate_hash(v) == "empty"
+
+    def test_matches_formula_hash_prefix(self):
+        from analytics.python.frost.frost_lineage import formula_hash
+        assert formula_hash("r1*r5").startswith("sha256:" + stable_candidate_hash("r1*r5"))
+
+    def test_process_independent_and_dedup_stable(self):
+        """PYTHONHASHSEED を変えても candidate_hash と構造 dedup の結果が一致する"""
+        code = (
+            "from analytics.python.frost.frost_runner import frost_candidates_from_eml\n"
+            "from analytics.python.frost.dedup_stage import DedupStage\n"
+            "class E:\n"
+            "    def __init__(s,i,e): s.candidate_id=f'c{i}'; s.compiled_expr=e; "
+            "s.fitness_score=0.1; s.metadata={}; s.node=None\n"
+            "T=['r1','r5','r20','gap','vol','ev','mom','rev']\n"
+            "ex=[f'{a}*{b}' for a in T for b in T][:50]\n"
+            "fc=frost_candidates_from_eml([E(i,e) for i,e in enumerate(ex)],'run','tr')\n"
+            "print([c.candidate_hash for c in fc][:3], "
+            "sorted(DedupStage().detect_structural(fc, threshold=0.1).suppressed))\n"
+        )
+        outs = set()
+        for seed in ("1", "2", "3"):
+            r = subprocess.run([sys.executable, "-W", "ignore", "-c", code], capture_output=True,
+                               text=True, cwd=str(ROOT),
+                               env={"PYTHONHASHSEED": seed, "PATH": "/usr/bin:/bin",
+                                    "PYTHONPATH": str(ROOT)}, timeout=120)
+            assert r.returncode == 0, r.stderr
+            outs.add(r.stdout.strip())
+        assert len(outs) == 1, outs
+
+    def test_no_builtin_hash_in_runner(self):
+        import ast
+        src = (ROOT / "analytics/python/frost/frost_runner.py").read_text(encoding="utf-8")
+        calls = [n.func.id for n in ast.walk(ast.parse(src))
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+        assert "hash" not in calls

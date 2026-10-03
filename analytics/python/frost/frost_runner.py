@@ -54,6 +54,25 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def stable_candidate_hash(formula_text: Optional[str]) -> str:
+    """
+    プロセス非依存の candidate_hash (16 hex)。
+
+    修正 (2026-10-03, ADR-002 L3): 旧実装 str(hash(formula_text))[:16] は PYTHONHASHSEED に
+    依存し、同じ式でもプロセスごとに値が変わっていた。影響:
+      - run 間で同一式を同定できない / golden の「candidate_hash は安定」前提が不成立
+      - DedupStage の hash 前方一致類似度が乱数化 (near_duplicate_threshold を下げると
+        抑制される候補集合が PYTHONHASHSEED で変わることを実測)
+    frost_lineage.formula_hash と同じ正規化 (空白除去) + SHA-256 の先頭 16 hex を使う。
+    空式は "empty" 固定 (旧実装でも hash("") は全空式で同値だったため意味論を維持)。
+    """
+    from analytics.python.frost.frost_lineage import formula_hash
+    try:
+        return formula_hash(formula_text)[len("sha256:"):][:16]
+    except ValueError:
+        return "empty"
+
+
 #: RunContext の run_id (例 "frost__20261003_024025") を FROST の UUID 列へ写像する namespace
 _FROST_RUN_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "qed.frost.run_id")
 
@@ -328,7 +347,7 @@ def frost_candidates_from_eml(
             feature_spec_json=meta,
             complexity_score=complexity_score,
             horizon=horizon,
-            candidate_hash=str(hash(formula_text))[:16],
+            candidate_hash=stable_candidate_hash(formula_text),
             backtest_summary=backtest_summary,
             metrics=metrics,
             fold_results=meta.get("fold_results", []),

@@ -189,7 +189,7 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 
 ## 10. TODO（本 ADR 外）
 
-- [ ] `frost_runner.frost_candidates_from_eml` の `candidate_hash` を `formula_hash` 由来の安定値へ置換（golden 影響評価込み）
+- [x] `frost_runner.frost_candidates_from_eml` の `candidate_hash` を `formula_hash` 由来の安定値へ置換（2026-10-03。旧値は PYTHONHASHSEED 依存で golden の比較自体が成立していなかったため、golden baseline は再取得が必要）
 - [x] S1: `exhaustive_search` / `gradient_search` が評価総数と fitness 統計を返すよう拡張（2026-09-30）
 - [ ] exhaustive の縮退（§4.7）を Note 登録し、探索設計の見直しを検証サイクルへ
 - [ ] S2: `frost_runner` での FROST 評価候補数の記録（source_type ≠ eml の候補の N）
