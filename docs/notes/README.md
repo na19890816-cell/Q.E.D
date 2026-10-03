@@ -21,6 +21,13 @@ Note は「今すぐコードを書かない」が「忘れてはいけない」
 | [NOTE-004](NOTE-004-min-signal-count-gate.md) | 最小シグナル数ゲート | 中 | P8 ablation 後に gate-0 評価 | Note登録済み |
 | [NOTE-005](NOTE-005-train-val-gap-gate.md) | train/val gap 直接ゲート | 中 | P8 ablation 後に gate-0 評価 | Note登録済み |
 
+## 運用・探索設計（2026-10-03 追加）
+
+| Note | タイトル | 優先度 | 配置 | ステータス |
+|---|---|---|---|---|
+| [NOTE-006](NOTE-006-exhaustive-search-degeneracy.md) | exhaustive 探索の縮退（93,347 木 → 17 式） | 中 | 案 A は即時可 / 案 B・C は gate-0 後 | Note登録済み |
+| [NOTE-007](NOTE-007-promotion-bridge-format-bug-impact.md) | 既存バグ（昇格 Bridge / migration / CLI / hash）の本番影響確認 | **高** | 本番 DB で確認 SQL を実行 | 確認待ち |
+
 ---
 
 ## 実装ブロッカー関係図
@@ -50,4 +57,4 @@ P0〜P9 完了
 
 ---
 
-**最終更新**: 2026-09-30（NOTE-001 実装完了）
+**最終更新**: 2026-10-03（NOTE-006 / NOTE-007 登録）
