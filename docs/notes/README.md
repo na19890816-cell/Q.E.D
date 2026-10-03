@@ -27,6 +27,7 @@ Note は「今すぐコードを書かない」が「忘れてはいけない」
 |---|---|---|---|---|
 | [NOTE-006](NOTE-006-exhaustive-search-degeneracy.md) | exhaustive 探索の縮退（93,347 木 → 17 式） | 中 | 案 A は即時可 / 案 B・C は gate-0 後 | Note登録済み |
 | [NOTE-007](NOTE-007-promotion-bridge-format-bug-impact.md) | 既存バグ（昇格 Bridge / migration / CLI / hash）の本番影響確認 | **高** | 本番 DB で確認 SQL を実行 | 確認待ち |
+| [NOTE-008](NOTE-008-p8-meta-validation-structural-findings.md) | P8 メタ検証の構造的所見（regime 軸の定数化 / top_k 非拘束 / 昇格境界の僅差） | 中 | golden 抽出後に再測定 → gate-0 | Note登録済み |
 
 ---
 

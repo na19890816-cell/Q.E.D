@@ -25,7 +25,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
 # frost_contracts のみをインポート (外部依存なし)
-from frost_contracts import FrostDecision, FrostEvaluation
+# 修正 (2026-10-03): 旧コードは裸 import のみで、パッケージ経由
+#   (analytics.python.frost.meta_validator) では ModuleNotFoundError になっていた。
+try:
+    from analytics.python.frost.frost_contracts import FrostDecision, FrostEvaluation
+except ImportError:  # pragma: no cover - 旧来の sys.path 直挿し利用向け
+    from frost_contracts import FrostDecision, FrostEvaluation
 
 
 # ---------------------------------------------------------------------------
