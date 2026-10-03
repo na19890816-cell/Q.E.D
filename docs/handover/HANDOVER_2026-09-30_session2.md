@@ -84,6 +84,29 @@ NOTE-001（憲法ギャップ最優先）を実装。
 - 実 PostgreSQL で shadow / enforce の両方を `run_eml_pipeline.py` で通し確認（runbook §17.5）
 - テスト: `tests/unit/test_promotion_gates.py` (53)
 
+### P1 — 適用不能 migration / FROST CLI の修理 (commit `32f7248`)
+
+- `079_frost_indexes.sql` / `080_frost_materialized_views.sql`: 存在しない列（`batch_label`, `run_date`,
+  `source_system`, `eml_backtest_folds.run_id` 等）を参照しており **空 DB に適用不能** だった → 実列へ修正
+- `081_frost_partitioning_prep.sql`: `$$` の入れ子（コメント内 `$$` 含む）で構文エラー → `$fn$` タグ化
+- 全 34 migration が空 DB に **2 回適用可能**（冪等）であることを実 PG17 で確認。
+  `tests/integration/test_migrations_apply_pg.py`（env `QED_MIGRATION_TEST_DSN` 設定時のみ実行）
+- FROST CLI: `FrostConfig.from_env` 不在で AttributeError → `load_frost_config()` + `dataclasses.replace`
+- 非 UUID の run_id が UUID 列への書き込みで失敗 → `normalize_frost_run_id`（UUID5 写像）
+- dry_run 実行で policy が記録されず policy_hash が追跡不能 → `_upsert_policy` を常時記録
+- 既知（本リポ外）: `016_v_event_study_experiment_reports` は外部 `experiment_runs` スタブの列不足でのみ失敗
+
+### P2 — candidate_hash の決定論化 (commit `0cd3a56`)
+
+- `frost_runner` が `str(hash(formula))` を使っており **PYTHONHASHSEED 依存で dedup 結果がランダム**（実験で再現）
+- `stable_candidate_hash`（SHA-256 先頭 16 hex、空式は `"empty"`）へ置換。ADR-002 §10 TODO をチェック
+- **golden baseline の再生成が必要**（旧ハッシュはプロセス毎に異なっていたため旧 baseline 自体が再現不能）
+
+### P3 — Note 登録 (commit `51e15c3`)
+
+- `NOTE-006-exhaustive-search-degeneracy.md`: 93,347 木 → 17 異なる式。探索空間の冗長性と対策案
+- `NOTE-007-promotion-bridge-format-bug-impact.md`: f-string バグの本番影響確認用 **読み取り専用 SQL** 付き
+
 ### ドキュメント
 - `docs/notes/NOTE-001-deflated-sharpe-ratio.md` §8 実装記録追加・ステータス更新
 - `docs/notes/README.md` インデックス更新
@@ -119,8 +142,9 @@ NOTE-001（憲法ギャップ最優先）を実装。
 ## 4. 次セッションへの引き継ぎ（推奨順）
 
 1. **ADR-002 の承認**（Proposed → Accepted）。特に family_key 粒度（horizon × universe × target × terminal_set）と N_raw 既定
-2. ~~ADR-002 S1: 探索側の書き込み点~~ ✅ 完了。残り: exhaustive 縮退の Note 登録 / S2（FROST 側）/
-   `candidate_hash` の安定化（ADR-002 §10 TODO、golden 影響評価込み）
+2. ~~ADR-002 S1: 探索側の書き込み点~~ ✅ 完了。~~exhaustive 縮退の Note 登録~~ ✅ NOTE-006 /
+   ~~`candidate_hash` の安定化~~ ✅ P2。残り: S2（FROST 側）
+2b. **本番で NOTE-007 の SQL を実行**し、APPLIED 0 件仮説を確認 / **golden baseline 再生成**（P2 の影響）
 3. ~~昇格 Bridge への G1/G2 ゲート配線~~ ✅ 完了（shadow 既定）。enforce への切替は観測データを見て人間が判断: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
    本番コードから呼ばれていない（テストのみ）。`postgres_event_study_knowledge_artifact_bridge.py` 等の
    昇格フローに組み込み、結果を audit_events に記録する
@@ -133,7 +157,7 @@ NOTE-001（憲法ギャップ最優先）を実装。
 
 ```bash
 cd /home/user/prostock
-python3 -W ignore -m pytest tests/ -q --tb=no           # 1315 passed, 24 skipped
+python3 -W ignore -m pytest tests/ -q --tb=no           # 1567 passed, 28 skipped
 python3 -W ignore -m pytest -m phase4_dsr -q             # 116
 python3 -W ignore -m pytest -m phase4_policy_g3 -q       # 38
 python3 -W ignore -m pytest -m adr002_lineage -q         # 108 (+3 は QED_PG_DSN 設定時)
