@@ -153,6 +153,35 @@ NOTE-001（憲法ギャップ最優先）を実装。
 
 ---
 
+## 4b. P4 (P8 メタ検証) 着手前調査メモ — 2026-10-03
+
+未実装。次セッションはここから再開する。
+
+- **リプレイ経路**: `evaluate_candidates_batch` → `assign_decisions` → `apply_final_policy`。
+  config は `dataclasses.replace(FrostConfig, **override)` で摂動できる（すべて純関数で DB 不要）
+- **コスト実測**（合成 200 候補）: 評価 0.46 s、決定 0.11 s。
+  ±10/20% × 8 ゲート × 2 方向を全部リプレイしても数十秒なので、証拠キャッシュは不要
+- 最適化の余地:
+  - 重み摂動はスコアの再計算だけで済み、評価をやり直す必要はない。
+    `ScoreEngine.compute_v1(ScoreComponents)` を使えば `diagnostics_json.score_breakdown` から再計算できる
+  - 閾値摂動では、`min_oos_sharpe` / `max_turnover` / `max_drawdown` がスコア側（penalty の正規化）にも効く。
+    そのため、ゲート判定だけを見るのではなく、評価全体をリプレイする必要がある
+- 対象:
+  - ゲート閾値 8 個（`V1_GATE_NAMES`）
+  - v1 重み 10 軸（`ScoreEngine._get_v1_weights`）。
+    `w_diversification` は FrostConfig にあるが ScoreEngine では未使用なので、ablation で「寄与ゼロ」と出るはず
+- 指標:
+  - 決定反転率: SELECTED / HOLD / REJECTED の変化率
+  - TOP_K Jaccard
+  - Kendall τ: pure Python で実装する（ADR-001。scipy は使わない）
+- 永続化: 次番号の migration `085_frost_meta_validation.sql` と Markdown レポートを用意する
+- **注意（既存の問題）**: `meta_validator.py` は `from frost_contracts import ...`（パッケージ外の裸 import）になっている。
+  sys.path を追加しない限り import できない可能性があるので、要確認
+- **注意**: `tests/golden/dataset/` は空。P8 の verify（golden に対するレポート）には、本番からの抽出（Makefile.golden）が先に必要。
+  抽出前は合成データセットで代用する
+
+---
+
 ## 5. コマンド
 
 ```bash
