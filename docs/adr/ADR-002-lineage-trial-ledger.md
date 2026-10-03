@@ -193,4 +193,4 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 - [x] S1: `exhaustive_search` / `gradient_search` が評価総数と fitness 統計を返すよう拡張（2026-09-30）
 - [ ] exhaustive の縮退（§4.7）を Note 登録し、探索設計の見直しを検証サイクルへ
 - [ ] S2: `frost_runner` での FROST 評価候補数の記録（source_type ≠ eml の候補の N）
-- [ ] 昇格 Bridge で `TrialLedger.snapshot()` → `DsrGate.check()` を配線し、snapshot_hash を audit_events へ
+- [x] 昇格 Bridge で `TrialLedger.snapshot()` → `DsrGate.check()` を配線し、snapshot_hash を audit_events へ（2026-10-03, runbook §17）

@@ -657,3 +657,59 @@ elif res.review_required:
 
 - リターンは **非年率** (日次等) のまま渡す。SR も非年率で計算される。
 - `trial_sharpes` を渡す場合は同じ頻度の非年率 SR で揃えること。
+
+---
+
+## 17. 昇格前ゲートの配線 (G1 DSR + G2 相関) — 2026-10-03
+
+> 実装: `analytics/python/frost/promotion_gates.py` / `analytics/python/pg_io/postgres_promotion_evidence.py` /
+> `analytics/python/alpha/promotion_bridge.py` / `scripts/postgres/run_eml_pipeline.py` (Phase E)
+
+### 17.1 フロー
+
+```
+walk-forward OOS 日次ネットリターン (上位 5 候補)
+   ├─ G1: DsrGate.check(returns, **TrialSnapshot.to_dsr_kwargs())   ← ADR-002 試行台帳の N
+   └─ G2: PortfolioCorrelationGate.check(returns, 採用済み同一 family のシグナル)
+        └─ バッチ内で先に昇格する候補も逐次「採用済み」に加える
+→ PromotionGateVerdict → promote_batch(gate_verdicts=...)
+     shadow : 昇格は継続。判定は audit_events.metadata.promotion_gates / knowledge_artifacts.metadata に記録
+     enforce: 不合格は knowledge_artifacts に登録せず audit REJECTED
+              (decision_reason_code=PROMOTION_GATE_FAILED, reject_reason_code=最初の不合格理由)
+```
+
+### 17.2 モード（PolicySpec.selection.promotion_gate_mode / env `FROST_PROMOTION_GATE_MODE`）
+
+| モード | 挙動 | 用途 |
+|---|---|---|
+| `off` | 評価しない（従来挙動） | 緊急時の切り戻し |
+| `shadow`（**既定**） | 評価・記録のみ | P8 ablation / gate-0 までの観測期間 |
+| `enforce` | 不合格を REJECTED | 閾値の妥当性確認後に人間が切替 |
+
+不正なモード値は ValueError（黙って off にしない）。モードは policy_hash に含まれる。
+
+### 17.3 理由コード
+
+| コード | 意味 |
+|---|---|
+| `DSR_BELOW_THRESHOLD` | DSR < min_dsr |
+| `DSR_INSUFFICIENT_EVIDENCE` | OOS リターンなし / 観測数不足（バックテスト対象外の候補を含む） |
+| `PORTFOLIO_CORR_EXCEEDED` | 採用済みアルファ（同一 family）との \|r\| ≥ max_portfolio_corr |
+| `PORTFOLIO_CORR_INSUFFICIENT_EVIDENCE` | 比較対象があるのに候補シグナルがない |
+
+### 17.4 採用済みシグナルの扱い
+
+- 昇格時に OOS ネットリターンを `knowledge_artifacts.metadata.promotion_signal`、基盤を
+  `promotion_signal_basis = {kind, family_key, n}` として保存する
+- 比較対象は `status <> 'deprecated'` かつ **同一 family_key** の artifact のみ（別データ基盤の数値列は位置で揃わないため）。
+  対象外件数は `portfolio.skipped_incomparable / skipped_without_signal` として audit に残る
+- 本機能導入前の artifact はシグナルを持たないため比較できない
+
+### 17.5 実 DB での確認結果（合成パネル, 2 run）
+
+| run | モード | 結果 |
+|---|---|---|
+| 1 | shadow | 3 候補とも APPLIED。G2 はバッチ内で 2 本目・3 本目を検出（\|r\| = 0.64 / 0.76） |
+| 2 | enforce | 同一式の再探索のため 3 候補とも \|r\| = 1.0 で REJECTED。knowledge_artifacts は増えない |
+
+run 2 の台帳 N は 42（= 21 × 2 run）に増えており、同じ family の再試行が DSR に反映されている。

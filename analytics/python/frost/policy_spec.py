@@ -149,6 +149,8 @@ class PolicySpec:
     max_same_family: int = 3
     review_required_default: bool = True
     auto_approve_low_risk: bool = False
+    # 昇格前ゲート (G1 DSR + G2 相関) の適用モード: off | shadow | enforce
+    promotion_gate_mode: str = "shadow"
 
     # ── [backtest] バックテスト品質 ───────────────────────────────────────
     min_backtest_folds: int = 5
@@ -235,6 +237,7 @@ class PolicySpec:
                 "max_same_family":           self.max_same_family,
                 "review_required_default":   self.review_required_default,
                 "auto_approve_low_risk":     self.auto_approve_low_risk,
+                "promotion_gate_mode":       self.promotion_gate_mode,
             },
             "backtest": {
                 "min_backtest_folds":        self.min_backtest_folds,
@@ -322,6 +325,7 @@ class PolicySpec:
             max_same_family=            int(  s.get("max_same_family",           3   )),
             review_required_default=    bool( s.get("review_required_default",   True)),
             auto_approve_low_risk=      bool( s.get("auto_approve_low_risk",     False)),
+            promotion_gate_mode=        str(  s.get("promotion_gate_mode",       "shadow")),
             # backtest
             min_backtest_folds=         int(  b.get("min_backtest_folds",        5   )),
             min_train_years=            float(b.get("min_train_years",           2.0 )),
@@ -441,6 +445,11 @@ class PolicySpec:
             errors.append(f"min_dsr={self.min_dsr} は [0,1] である必要があります")
         if self.dsr_default_n_trials < 1:
             errors.append(f"dsr_default_n_trials={self.dsr_default_n_trials} は 1 以上である必要があります")
+
+        if self.promotion_gate_mode not in ("off", "shadow", "enforce"):
+            errors.append(
+                f"promotion_gate_mode={self.promotion_gate_mode!r} は off/shadow/enforce のいずれかである必要があります"
+            )
 
         if self.top_k <= 0:
             errors.append(f"top_k={self.top_k} は 1 以上である必要があります")
@@ -581,6 +590,7 @@ def policy_spec_from_frost_config(cfg: Any) -> PolicySpec:
         max_same_family=            cfg.max_same_family,
         review_required_default=    cfg.review_required_default,
         auto_approve_low_risk=      cfg.auto_approve_low_risk,
+        promotion_gate_mode=        getattr(cfg, "promotion_gate_mode", "shadow"),
         # backtest
         min_backtest_folds=         cfg.min_backtest_folds,
         min_train_years=            cfg.min_train_years,
@@ -664,6 +674,7 @@ def policy_spec_to_frost_config(spec: PolicySpec) -> Any:
         max_same_family=            spec.max_same_family,
         review_required_default=    spec.review_required_default,
         auto_approve_low_risk=      spec.auto_approve_low_risk,
+        promotion_gate_mode=        spec.promotion_gate_mode,
         # backtest
         min_backtest_folds=         spec.min_backtest_folds,
         min_train_years=            spec.min_train_years,
@@ -699,7 +710,7 @@ _POLICY_ENV_VARS: List[str] = [
     "FROST_FSI_MAX", "FROST_REGIME_ENTROPY_MIN", "FROST_SIGNAL_CORR_MAX",
     "FROST_MAX_PORTFOLIO_CORR",
     "FROST_CUSUM_K", "FROST_CUSUM_H", "FROST_CUSUM_MU0", "FROST_LIFECYCLE_MIN_IC_LEN",
-    "FROST_MIN_DSR", "FROST_DSR_DEFAULT_N_TRIALS",
+    "FROST_MIN_DSR", "FROST_DSR_DEFAULT_N_TRIALS", "FROST_PROMOTION_GATE_MODE",
     "FROST_TOP_K", "FROST_PROMOTION_TOP_K", "FROST_REQUIRE_AUDIT_PASS",
     "FROST_NEAR_DUPLICATE_THRESHOLD", "FROST_MAX_SAME_FAMILY",
     "FROST_REVIEW_REQUIRED_DEFAULT", "FROST_AUTO_APPROVE_LOW_RISK",
@@ -785,6 +796,7 @@ def load_policy_spec(
         max_same_family=            _env_int(  "FROST_MAX_SAME_FAMILY",            3   ),
         review_required_default=    _env_bool( "FROST_REVIEW_REQUIRED_DEFAULT",    True),
         auto_approve_low_risk=      _env_bool( "FROST_AUTO_APPROVE_LOW_RISK",      False),
+        promotion_gate_mode=        _env_str(  "FROST_PROMOTION_GATE_MODE",        "shadow"),
         # backtest
         min_backtest_folds=         _env_int(  "FROST_MIN_BACKTEST_FOLDS",         5   ),
         min_train_years=            _env_float("FROST_MIN_TRAIN_YEARS",            2.0 ),

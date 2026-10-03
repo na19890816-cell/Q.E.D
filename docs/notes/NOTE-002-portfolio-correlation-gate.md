@@ -140,3 +140,10 @@ if not result.passed:
 ```
 62 passed in 0.27s ✅ (全テストスイート: 1056 passed, 24 skipped)
 ```
+
+---
+
+## 配線記録 (2026-10-03)
+
+昇格 Bridge へ配線済み（`promotion_gates.py` / runbook §17）。既定は shadow（記録のみ）。
+比較対象は同一 family_key の採用済み artifact に限定し、シグナルは walk-forward OOS 日次ネットリターン。

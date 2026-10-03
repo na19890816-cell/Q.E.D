@@ -183,6 +183,9 @@ class FrostConfig:
     dsr_default_n_trials: int = 1
     """G1: 試行回数 N 未提供時の仮定値 (ADR-002 系譜ログ整備までの暫定)。"""
 
+    promotion_gate_mode: str = "shadow"
+    """昇格前ゲート (G1 DSR + G2 相関) の適用モード: off | shadow | enforce。"""
+
     # ── Hard Gate 閾値 ────────────────────────────────────────────────────
     pbo_threshold: float = 0.20
     """PBO がこれを超えると hard gate FAIL (b1)。"""
@@ -366,6 +369,9 @@ class FrostConfig:
         if self.dsr_default_n_trials < 1:
             errors.append(f"dsr_default_n_trials={self.dsr_default_n_trials} は 1 以上である必要があります")
 
+        if self.promotion_gate_mode not in ("off", "shadow", "enforce"):
+            errors.append(f"promotion_gate_mode={self.promotion_gate_mode!r} は off/shadow/enforce のいずれか")
+
         # top_k の正値チェック
         if self.top_k <= 0:
             errors.append(f"top_k={self.top_k} は 1 以上である必要があります")
@@ -505,6 +511,7 @@ def load_frost_config(overrides: Optional[dict] = None) -> FrostConfig:
         # ── G1: DSR ───────────────────────────────────────────────────────
         min_dsr=_env_float("FROST_MIN_DSR", 0.95),
         dsr_default_n_trials=_env_int("FROST_DSR_DEFAULT_N_TRIALS", 1),
+        promotion_gate_mode=_env_str("FROST_PROMOTION_GATE_MODE", "shadow"),
 
         # ── Hard Gate ─────────────────────────────────────────────────────
         pbo_threshold=_env_float("FROST_PBO_THRESHOLD", 0.20),

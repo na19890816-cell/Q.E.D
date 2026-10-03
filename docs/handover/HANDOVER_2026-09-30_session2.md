@@ -4,7 +4,7 @@
 **リポジトリ**: `https://github.com/na19890816-cell/Q.E.D.git`  
 **ブランチ**: `main`  
 **前回引き継ぎ書**: `docs/handover/HANDOVER_2026-09-30.md` (Phase 3 完了時点, commit `85cde61`)  
-**テスト状態**: ✅ `1454 passed, 27 skipped` (skip は全て `QED_PG_DSN` 未設定の統合テスト)
+**テスト状態**: ✅ `1507 passed, 27 skipped` (skip は全て `QED_PG_DSN` 未設定の統合テスト)
 
 ---
 
@@ -70,6 +70,20 @@ NOTE-001（憲法ギャップ最優先）を実装。
   試行 = **異なる式の数** と定義した。探索自体がほぼ冗長である点は別途 Note 化を推奨
 - テスト: `tests/unit/test_adr002_s1_search_stats.py` (31)
 
+### 昇格前ゲートの配線（G1 + G2）— 2026-10-03
+
+- `analytics/python/frost/promotion_gates.py`: `PromotionGateEngine`（off / **shadow 既定** / enforce）、
+  バッチ内逐次 G2、証拠不足は不合格、`PromotionGateVerdict`（理由コード・DSR・相関・台帳スナップショット）
+- `analytics/python/pg_io/postgres_promotion_evidence.py`: 採用済みシグナル取得（**同一 family_key のみ**比較）
+- `promotion_bridge.py`: `gate_verdict` / `promotion_signal` 引数追加。enforce 不合格は artifact 未登録で REJECTED
+- `run_eml_pipeline.py` Phase E: walk-forward OOS ネットリターンを証拠にゲート評価 → `promote_batch`
+- PolicySpec / FrostConfig: `promotion_gate_mode`（env `FROST_PROMOTION_GATE_MODE`）
+- **既存バグ修正**: `promotion_bridge._insert_knowledge_artifact` の不正な f-string 書式
+  （`{x:.4f if ev else 0.0:.4f}`）により、**非 dry_run の昇格は常に例外 → REJECTED になっていた**。
+  これまで本番で APPLIED された EML アルファは 1 件も無かった可能性が高い（要確認）
+- 実 PostgreSQL で shadow / enforce の両方を `run_eml_pipeline.py` で通し確認（runbook §17.5）
+- テスト: `tests/unit/test_promotion_gates.py` (53)
+
 ### ドキュメント
 - `docs/notes/NOTE-001-deflated-sharpe-ratio.md` §8 実装記録追加・ステータス更新
 - `docs/notes/README.md` インデックス更新
@@ -107,7 +121,7 @@ NOTE-001（憲法ギャップ最優先）を実装。
 1. **ADR-002 の承認**（Proposed → Accepted）。特に family_key 粒度（horizon × universe × target × terminal_set）と N_raw 既定
 2. ~~ADR-002 S1: 探索側の書き込み点~~ ✅ 完了。残り: exhaustive 縮退の Note 登録 / S2（FROST 側）/
    `candidate_hash` の安定化（ADR-002 §10 TODO、golden 影響評価込み）
-3. **昇格 Bridge への G1/G2 ゲート配線**（台帳 snapshot → DsrGate、snapshot_hash を audit_events へ）: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
+3. ~~昇格 Bridge への G1/G2 ゲート配線~~ ✅ 完了（shadow 既定）。enforce への切替は観測データを見て人間が判断: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
    本番コードから呼ばれていない（テストのみ）。`postgres_event_study_knowledge_artifact_bridge.py` 等の
    昇格フローに組み込み、結果を audit_events に記録する
 4. **P8 軸 ablation** → DSR の gate_engine / スコア軸統合可否、NOTE-004 / 005 の gate-0 評価

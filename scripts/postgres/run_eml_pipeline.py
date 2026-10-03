@@ -54,9 +54,17 @@ from analytics.python.alpha.eml.eml_lineage import (
     trial_batches_from_eml_output,
 )
 from analytics.python.pg_io.postgres_lineage_bridge import (
+    fetch_trial_snapshot,
     insert_trial_batches,
     ledger_tables_exist,
 )
+from analytics.python.frost.policy_spec import load_policy_spec
+from analytics.python.frost.promotion_gates import (
+    MODE_OFF,
+    PromotionEvidence,
+    PromotionGateEngine,
+)
+from analytics.python.pg_io.postgres_promotion_evidence import fetch_promoted_signals
 from analytics.python.io.postgres_eml_backtest_writer import (
     upsert_backtest_folds,
     upsert_backtest_run,
@@ -107,6 +115,63 @@ def _load_panel(conn: psycopg.Connection, limit: int = 5000) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=cols)
     df["metric"] = df["metric"].astype(float)
     return df
+
+
+def _evaluate_promotion_gates(conn: psycopg.Connection, output, bt_results, lineage: dict):
+    """
+    G1 (DSR) + G2 (ポートフォリオ相関) の昇格前ゲートを評価する。
+
+    - 証拠: walk-forward OOS 日次ネットリターン (combined_net_returns)
+      → DSR の入力 / 相関ゲートのシグナル / 昇格時に promotion_signal として保存
+    - バックテストされなかった候補 (上位 5 件以外) は証拠なし = 不合格扱い
+    - モードは PolicySpec.promotion_gate_mode (env FROST_PROMOTION_GATE_MODE, 既定 shadow)
+
+    Returns
+    -------
+    (verdicts, signals, gates_summary)
+    """
+    spec = load_policy_spec()
+    engine = PromotionGateEngine.from_config(spec)
+    if engine.mode == MODE_OFF:
+        log.info("  [gates] FROST_PROMOTION_GATE_MODE=off — 昇格前ゲートをスキップ")
+        return {}, {}, {"mode": MODE_OFF}
+
+    family_key = eml_family_key(output)
+    bt_map = {c.candidate_id: bt for c, bt in bt_results}
+    signals = {
+        cid: [float(x) for x in bt.combined_net_returns.fillna(0.0).tolist()]
+        for cid, bt in bt_map.items()
+    }
+    evidences = [
+        PromotionEvidence(
+            candidate_id=c.candidate_id,
+            oos_returns=signals.get(c.candidate_id),
+            signal=signals.get(c.candidate_id),
+            returns_source="walk_forward_oos_net_returns" if c.candidate_id in signals else "",
+        )
+        for c in output.promoted
+    ]
+
+    snapshot = None
+    if lineage.get("status") == "recorded":
+        snapshot = fetch_trial_snapshot(conn, family_key, sr_periodicity="daily")
+    promoted = fetch_promoted_signals(conn, family_key=family_key)
+    verdicts = engine.evaluate_batch(evidences, snapshot=snapshot,
+                                     promoted_signals=promoted.signals)
+    summary = {
+        "mode": engine.mode,
+        "policy_hash": spec.policy_hash,
+        "evaluated": len(verdicts),
+        "passed": sum(1 for v in verdicts.values() if v.passed),
+        "blocked": sum(1 for v in verdicts.values() if v.blocks_promotion),
+        "ledger_n_trials": snapshot.n_trials if snapshot else None,
+        "ledger_snapshot_hash": snapshot.snapshot_hash if snapshot else None,
+        "portfolio": promoted.to_dict(),
+    }
+    log.info(f"  [gates] {summary}")
+    for cid, v in verdicts.items():
+        log.info(f"    candidate={cid[:8]} passed={v.passed} reasons={v.reason_codes}")
+    return verdicts, signals, summary
 
 
 def _record_trial_ledger(conn: psycopg.Connection, output) -> dict:
@@ -271,11 +336,17 @@ def run_eml_pipeline() -> dict:
         # Phase E: プロモーション
         # ---------------------------------------------------------- #
         log.info("Phase E: Promotion → Q.E.D. チェーン")
+        gate_verdicts, promo_signals, gates_summary = _evaluate_promotion_gates(
+            conn, output, bt_results, lineage,
+        )
         promo_results = promote_batch(
             conn=conn,
             candidates=output.promoted,
             eval_results=output.eval_results,
             dry_run=dry_run,
+            gate_verdicts=gate_verdicts,
+            promotion_signals=promo_signals,
+            signal_family_key=eml_family_key(output),
         )
 
         applied  = [r for r in promo_results if r["decision"] == "APPLIED"]
@@ -308,6 +379,7 @@ def run_eml_pipeline() -> dict:
             "n_trials_evaluated": output.n_trials_evaluated,
             "n_trials":        output.n_trials,
             "lineage":         lineage,
+            "promotion_gates": gates_summary,
         }
 
         log.info("=== EML Pipeline Completed ===")
