@@ -210,7 +210,82 @@ def run_frost_pipeline(
     # ── Phase 1: qed_policies upsert & frost_runs.policy_hash 更新 ─────
     _upsert_policy(output, policy_spec, config, conn)
 
+    # ── ADR-002 S2: 非 EML 候補の試行数を台帳へ記録 ─────────────────────
+    output.lineage = _record_frost_trial_ledger(output, config, conn)
+
     return output
+
+
+# ---------------------------------------------------------------------------
+# ADR-002 S2: 試行台帳への記録
+# ---------------------------------------------------------------------------
+
+def _record_frost_trial_ledger(
+    output: FrostRunOutput,
+    config: FrostConfig,
+    conn: Optional[psycopg.Connection],
+) -> Dict[str, Any]:
+    """
+    FROST 評価の試行数 (source_type != eml) を qed_trial_batches に追記する。
+
+    - FROST_LINEAGE_ENABLED=0 で無効化 (既定 1)
+    - dry_run でも記録する: 評価 (= 検定) は実際に行われており、過少計上は DSR を楽観化する
+    - migration 084 未適用ならスキップ。書き込み失敗はパイプラインを止めず
+      output.error_message と戻り値に記録する (FROST の既存 DB 書き込みと同じ方針)
+    - batch_id は決定論的なので再実行で重複しない
+    """
+    import os as _os
+    if _os.environ.get("FROST_LINEAGE_ENABLED", "1") != "1":
+        return {"status": "disabled"}
+    if not output.evaluations:
+        return {"status": "no_evaluations"}
+    try:
+        from analytics.python.frost.frost_run_lineage import (
+            ledger_defaults_from_env, summarize_batches, trial_batches_from_frost_output)
+        batches = trial_batches_from_frost_output(output, **ledger_defaults_from_env())
+    except Exception as exc:  # 変換は純関数。失敗はバグなので記録して継続
+        output.error_message = ((output.error_message or "") + f" | lineage build error: {exc}").strip(" |")
+        return {"status": "error", "error": str(exc)}
+    if not batches:
+        return {"status": "nothing_to_record", "batches": 0, "n_trials": 0}
+
+    def _write(c: psycopg.Connection) -> Dict[str, Any]:
+        from analytics.python.pg_io.postgres_lineage_bridge import (
+            insert_trial_batches, ledger_tables_exist)
+        if not ledger_tables_exist(c):
+            return {"status": "skipped_no_table", **summarize_batches(batches)}
+        inserted = insert_trial_batches(c, batches)
+        c.commit()
+        return {"status": "recorded", "inserted": inserted, **summarize_batches(batches)}
+
+    try:
+        if conn is not None:
+            # 先行する FROST 書き込みの失敗で接続がトランザクション異常状態のままだと
+            # 台帳書き込みも巻き添えで失敗し N が過少計上になる。異常状態なら先に rollback する
+            # (失敗した先行書き込みはどのみちコミットされない)。
+            try:
+                if conn.info.transaction_status == psycopg.pq.TransactionStatus.INERROR:
+                    conn.rollback()
+            except AttributeError:
+                pass
+            return _write(conn)
+        try:
+            dsn = config.effective_pg_dsn()
+        except Exception:
+            # DSN 未設定 (ローカル/テスト) は _upsert_policy と同様にスキップ
+            return {"status": "skipped_no_connection", **summarize_batches(batches)}
+        with psycopg.connect(dsn) as new_conn:
+            return _write(new_conn)
+    except Exception as exc:
+        try:
+            if conn is not None:
+                conn.rollback()
+        except Exception:
+            pass
+        output.error_message = ((output.error_message or "") + f" | lineage write error: {exc}").strip(" |")
+        if config.verbose:
+            traceback.print_exc()
+        return {"status": "error", "error": str(exc), **summarize_batches(batches)}
 
 
 # ---------------------------------------------------------------------------

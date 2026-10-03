@@ -249,6 +249,9 @@ class FrostRunOutput:
     status: str = "completed"
     """running / completed / failed / skipped / dry_run"""
     dry_run: bool = False
+    lineage: Dict[str, Any] = field(default_factory=dict)
+    """ADR-002 S2: 試行台帳への記録結果 (status / batches / n_trials)。DB 列には書かない。"""
+
     error_message: Optional[str] = None
 
     # タイムスタンプ

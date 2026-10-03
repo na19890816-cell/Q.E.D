@@ -107,6 +107,36 @@ NOTE-001（憲法ギャップ最優先）を実装。
 - `NOTE-006-exhaustive-search-degeneracy.md`: 93,347 木 → 17 異なる式。探索空間の冗長性と対策案
 - `NOTE-007-promotion-bridge-format-bug-impact.md`: f-string バグの本番影響確認用 **読み取り専用 SQL** 付き
 
+### P4 — P8 メタ検証 (commit `1c91b5d`)
+
+- `analytics/python/frost/frost_meta_sensitivity.py`（pure Python。Kendall τ-b も自前実装。seed で決定論的）
+  - **閾値感度**: 8 ゲート × ±10/20%。決定反転率・gate 反転率・TOP_K Jaccard を出す
+  - **軸 ablation**: v1 の 10 重みを 1 つずつ 0 にする
+  - **重み摂動**: ±20% × N 回で Kendall τ の分布を取る
+  - 重み系の分析は証拠キャッシュを再スコアして高速化した。フルリプレイとの厳密一致はテストで保証済み
+  - Gate 通過数 ≤ top_k の「非拘束」状態を検出して警告する。その場合の評価指標は `promo_jaccard`（昇格上位）と `kendall_tau_passed`
+- 結果の保存先: migration `085_frost_meta_validation.sql`（meta_run_id で冪等）と `postgres_meta_validation_bridge.py`
+- CLI: `scripts/frost/run_frost_meta_validation.py --synthetic N | --candidates-json F [--write-db]`
+- 合成データでのレポート: `docs/reports/frost_meta_validation_synthetic_2026-10-03.md`
+- **NOTE-008**（データに依存しない構造的所見）:
+  - `w_regime_stability` は Gate 通過集合の中で定数になる（重み 0.15 が順位に効いていない）
+  - top_k が非拘束だと、重みは SELECTED に効かない
+  - 昇格上位の境界は僅差になりやすい
+- 既存バグの修正: `meta_validator.py` の裸 import。パッケージ経由では import できなかった
+- テスト: `tests/unit/test_p8_meta_sensitivity.py`（57）
+
+### P5 — ADR-002 S2: FROST 側の試行台帳 (本コミット)
+
+- `analytics/python/frost/frost_run_lineage.py` と `frost_runner._record_frost_trial_ledger`
+  - **非 EML 候補のみ**を計上する。EML 候補は S1 で計上済みのため
+  - 1 family = 1 batch（`stage=frost_eval`）
+  - n_trials は異なる hash の数。sr_stats は全件評価の oos_sharpe（非年率）
+  - dry_run でも記録する。無効化は `FROST_LINEAGE_ENABLED=0`。084 が未適用ならスキップ。失敗しても run は止めない
+  - 先行する FROST 書き込みが失敗して接続が INERROR になっていたら rollback してから記録する（実 PG で再現と修正を確認）
+- 実 PG での確認: S2 を記録 → 再実行で重複しないこと → `fetch_trial_snapshot` で N と V[SR] を取得できること
+- ADR-002 §4.9 に追記し、§10 の S2 にチェックを入れた
+- テスト: `tests/unit/test_adr002_s2_frost_ledger.py`（26）
+
 ### ドキュメント
 - `docs/notes/NOTE-001-deflated-sharpe-ratio.md` §8 実装記録追加・ステータス更新
 - `docs/notes/README.md` インデックス更新
@@ -142,43 +172,13 @@ NOTE-001（憲法ギャップ最優先）を実装。
 ## 4. 次セッションへの引き継ぎ（推奨順）
 
 1. **ADR-002 の承認**（Proposed → Accepted）。特に family_key 粒度（horizon × universe × target × terminal_set）と N_raw 既定
-2. ~~ADR-002 S1: 探索側の書き込み点~~ ✅ 完了。~~exhaustive 縮退の Note 登録~~ ✅ NOTE-006 /
-   ~~`candidate_hash` の安定化~~ ✅ P2。残り: S2（FROST 側）
+2. ~~ADR-002 S1 / S2~~ ✅ 完了。残り: S3（手動投入 CLI）、昇格 Bridge での snapshot の audit 記録
 2b. **本番で NOTE-007 の SQL を実行**し、APPLIED 0 件仮説を確認 / **golden baseline 再生成**（P2 の影響）
 3. ~~昇格 Bridge への G1/G2 ゲート配線~~ ✅ 完了（shadow 既定）。enforce への切替は観測データを見て人間が判断: 現在 `DsrGate` / `PortfolioCorrelationGate` はどちらも
    本番コードから呼ばれていない（テストのみ）。`postgres_event_study_knowledge_artifact_bridge.py` 等の
    昇格フローに組み込み、結果を audit_events に記録する
-4. **P8 軸 ablation** → DSR の gate_engine / スコア軸統合可否、NOTE-004 / 005 の gate-0 評価
+4. ~~P8 メタ検証~~ ✅ 実装完了。**golden dataset を抽出して再測定** → NOTE-008 の対応案と NOTE-004 / 005 を gate-0 評価にかける
 5. `qedschema/migrations/` に DSR 結果列（または frost_promotion_bridges の evidence JSON）を追加するか検討
-
----
-
-## 4b. P4 (P8 メタ検証) 着手前調査メモ — 2026-10-03
-
-未実装。次セッションはここから再開する。
-
-- **リプレイ経路**: `evaluate_candidates_batch` → `assign_decisions` → `apply_final_policy`。
-  config は `dataclasses.replace(FrostConfig, **override)` で摂動できる（すべて純関数で DB 不要）
-- **コスト実測**（合成 200 候補）: 評価 0.46 s、決定 0.11 s。
-  ±10/20% × 8 ゲート × 2 方向を全部リプレイしても数十秒なので、証拠キャッシュは不要
-- 最適化の余地:
-  - 重み摂動はスコアの再計算だけで済み、評価をやり直す必要はない。
-    `ScoreEngine.compute_v1(ScoreComponents)` を使えば `diagnostics_json.score_breakdown` から再計算できる
-  - 閾値摂動では、`min_oos_sharpe` / `max_turnover` / `max_drawdown` がスコア側（penalty の正規化）にも効く。
-    そのため、ゲート判定だけを見るのではなく、評価全体をリプレイする必要がある
-- 対象:
-  - ゲート閾値 8 個（`V1_GATE_NAMES`）
-  - v1 重み 10 軸（`ScoreEngine._get_v1_weights`）。
-    `w_diversification` は FrostConfig にあるが ScoreEngine では未使用なので、ablation で「寄与ゼロ」と出るはず
-- 指標:
-  - 決定反転率: SELECTED / HOLD / REJECTED の変化率
-  - TOP_K Jaccard
-  - Kendall τ: pure Python で実装する（ADR-001。scipy は使わない）
-- 永続化: 次番号の migration `085_frost_meta_validation.sql` と Markdown レポートを用意する
-- **注意（既存の問題）**: `meta_validator.py` は `from frost_contracts import ...`（パッケージ外の裸 import）になっている。
-  sys.path を追加しない限り import できない可能性があるので、要確認
-- **注意**: `tests/golden/dataset/` は空。P8 の verify（golden に対するレポート）には、本番からの抽出（Makefile.golden）が先に必要。
-  抽出前は合成データセットで代用する
 
 ---
 
@@ -186,9 +186,11 @@ NOTE-001（憲法ギャップ最優先）を実装。
 
 ```bash
 cd /home/user/prostock
-python3 -W ignore -m pytest tests/ -q --tb=no           # 1567 passed, 28 skipped
+python3 -W ignore -m pytest tests/ -q --tb=no           # 1651 passed, 28 skipped
 python3 -W ignore -m pytest -m phase4_dsr -q             # 116
 python3 -W ignore -m pytest -m phase4_policy_g3 -q       # 38
+python3 -W ignore -m pytest -m p8_meta -q                # 57
+python3 -W ignore scripts/frost/run_frost_meta_validation.py --synthetic 120 --top-k 8 --promotion-top-k 3
 python3 -W ignore -m pytest -m adr002_lineage -q         # 108 (+3 は QED_PG_DSN 設定時)
 QED_PG_DSN="..." python3 -W ignore -m pytest tests/integration/test_adr002_lineage_pg.py
 

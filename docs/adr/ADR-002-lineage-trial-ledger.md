@@ -110,7 +110,7 @@ qed_lineage_edges (
 | 段 | 書き込み点 | 記録内容 | 本 ADR での扱い |
 |---|---|---|---|
 | S1 | `eml_search.exhaustive_search` / `gradient_search` | top_k 前の**異なる式数**（+ 木の数・fitness 統計は metadata） | ✅ **実装済み**（任意引数 `stats_out`。旧版との出力バイト一致で golden 非影響を確認） |
-| S2 | `frost_runner.run_frost_pipeline` | FROST 評価候補数 + oos_sharpe 統計 | 次フェーズ |
+| S2 | `frost_runner.run_frost_pipeline` | **非 EML 候補**の異なる candidate_hash 数 + oos_sharpe 統計（全件評価なので選択バイアスなし） | ✅ **実装済み**（2026-10-03, §4.9） |
 | S3 | 手動投入 / 外部アルファ | `stage='manual'` で件数を申告 | 次フェーズ（CLI） |
 | 読み出し | 昇格 Bridge → `DsrGate.check(n_trials=N, sr_variance=V)` | snapshot を audit に記録 | 次フェーズ |
 
@@ -148,6 +148,34 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 - 評価段階の Sharpe は top_k 生存者のみ = 選択後の標本で、試行間分散を**過小**推定する → SR0 が下がり DSR が楽観化
 - よって EML batch の `sr_stats` は空とし、DSR は SR 推定量分散（帰無仮説下の標本分散）へフォールバックさせる。
   生存者 Sharpe は `metadata.survivor_sharpe_daily` に参考値として残す
+
+### 4.9 S2 実装の計上規則（2026-10-03）
+
+`analytics/python/frost/frost_run_lineage.py` と `frost_runner._record_frost_trial_ledger` で実装した。
+
+- **EML 候補は計上しない**。FROST に届く EML 候補は S1 の top_k 生存者で、S1 で「評価した異なる式」として計上済みだからである。
+  - 再計上すると同一式の二重計上になる。
+  - 除外した件数は `metadata.excluded_eml_candidates` に記録する。
+- 1 family = 1 batch（`stage='frost_eval'`, `source_type='frost'`）とする。
+  - `batch_id = UUID5(run_id, "frost_eval:<family_key>")` なので、再実行しても重複しない。
+- `n_trials` = 評価済み候補の**異なる candidate_hash 数**（S1 と同じ定義）。
+  - hash が空の候補は candidate_id で代替する（過少計上しない側）。
+- `sr_stats` = oos_sharpe（年率）を √252 で割った非年率値。
+  - FROST は投入候補を**全件評価**し、生存者で絞り込まない。
+  - そのため §4.8 の選択バイアスは無く、V[SR] の推定に使える。
+  - `FROST_LEDGER_SR_ANNUALIZATION=0` で記録を無効化できる（無効時は保守側のフォールバック）。
+- family:
+  - `feature_spec_json` の universe / target_name / terminal_set_hash と、候補の horizon から決める。
+  - 欠けているものは EML の既定（`event_study_panel` / `abnormal_return`）で補い、`metadata.family_source` に件数を残す。
+  - 既定は env の `FROST_LEDGER_UNIVERSE` / `FROST_LEDGER_TARGET` で変えられる。
+- 運用:
+  - dry_run でも記録する。
+  - `FROST_LINEAGE_ENABLED=0` で無効化できる。
+  - 084 が未適用ならスキップする。
+  - 書き込みに失敗してもパイプラインは止めず、`error_message` に追記する。
+  - 先行する FROST 書き込みが失敗して接続が INERROR 状態のときは、rollback してから台帳に書く。巻き添えの欠落は N の過少計上になるため。
+  - 実 PG では、FROST 書き込みが失敗したケースでも台帳が記録されることを確認した。
+- 決定（SELECTED 等）には一切影響しない。台帳の有無で決定が同一であることをテストで固定した。
 
 ## 5. 実装（本 ADR と同時に追加）
 
@@ -192,5 +220,5 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 - [x] `frost_runner.frost_candidates_from_eml` の `candidate_hash` を `formula_hash` 由来の安定値へ置換（2026-10-03。旧値は PYTHONHASHSEED 依存で golden の比較自体が成立していなかったため、golden baseline は再取得が必要）
 - [x] S1: `exhaustive_search` / `gradient_search` が評価総数と fitness 統計を返すよう拡張（2026-09-30）
 - [ ] exhaustive の縮退（§4.7）を Note 登録し、探索設計の見直しを検証サイクルへ
-- [ ] S2: `frost_runner` での FROST 評価候補数の記録（source_type ≠ eml の候補の N）
+- [x] S2: `frost_runner` での FROST 評価候補数の記録（source_type ≠ eml の候補の N）— `frost_run_lineage.py`（2026-10-03）
 - [x] 昇格 Bridge で `TrialLedger.snapshot()` → `DsrGate.check()` を配線し、snapshot_hash を audit_events へ（2026-10-03, runbook §17）
