@@ -1,0 +1,4 @@
+# Additional development-only dependency for the Phase 5R contract/schema tests.
+# Runtime validator uses only Python's standard library. pytest is supplied by
+# the existing development environment; this is not a lock for the whole repo.
+jsonschema==4.25.1

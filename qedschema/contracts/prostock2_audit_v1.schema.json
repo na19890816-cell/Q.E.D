@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qed:contracts:prostock2-audit:1",
+  "title": "ProStock2 to Q.E.D audit record v1",
+  "description": "One proposed audit record. JSON Schema shape checks must be followed by the pure semantic validator; acceptance does not authorize trading or promotion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "record_id", "source_system", "record_type",
+    "symbol", "data_date", "universe_version", "measurement_id", "event_time", "captured_at",
+    "available_at", "data_cutoff", "source_revision", "code_commit",
+    "policy_hash", "market_data_hash", "payload_sha256", "upstream_gate_state",
+    "status", "reason_codes", "missing_fields", "availability", "payload"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "run_id": {"$ref": "#/$defs/identifier"},
+    "record_id": {"$ref": "#/$defs/identifier"},
+    "source_system": {"const": "prostock2"},
+    "record_type": {"enum": ["ohlcv", "feature", "us_macro"]},
+    "symbol": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$"},
+    "data_date": {"$ref": "#/$defs/date"},
+    "universe_version": {"$ref": "#/$defs/identifier"},
+    "measurement_id": {"$ref": "#/$defs/identifier", "description": "Present even when payload is null: ohlcv, feature name, or macro series_id."},
+    "event_time": {"$ref": "#/$defs/nullableInstant"},
+    "captured_at": {"$ref": "#/$defs/instant"},
+    "available_at": {"$ref": "#/$defs/nullableInstant"},
+    "data_cutoff": {"$ref": "#/$defs/nullableInstant"},
+    "source_revision": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+    "code_commit": {"anyOf": [{"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"}, {"type": "null"}]},
+    "policy_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},
+    "market_data_hash": {"$ref": "#/$defs/nullableHash"},
+    "payload_sha256": {"$ref": "#/$defs/nullableHash"},
+    "upstream_gate_state": {"enum": ["passed", "failed", "not_evaluated", "unknown"]},
+    "status": {"enum": ["ready", "missing", "rejected"]},
+    "reason_codes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+    "missing_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Must equal the nullable root properties whose value is null; equality is checked by the semantic validator.",
+      "items": {"enum": ["event_time", "available_at", "data_cutoff", "source_revision", "code_commit", "policy_hash", "market_data_hash", "payload_sha256", "payload"]}
+    },
+    "availability": {"$ref": "#/$defs/availability"},
+    "payload": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/ohlcv"}, {"$ref": "#/$defs/feature"}, {"$ref": "#/$defs/usMacro"}]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"payload": {"type": "null"}}, "required": ["payload"]},
+      "then": {"properties": {"payload_sha256": {"type": "null"}}},
+      "else": {"properties": {"payload_sha256": {"$ref": "#/$defs/hash"}}}
+    },
+    {
+      "if": {"properties": {"record_type": {"const": "ohlcv"}}, "required": ["record_type"]},
+      "then": {"properties": {"measurement_id": {"const": "ohlcv"}, "payload": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/ohlcv"}]}}}
+    },
+    {
+      "if": {"properties": {"record_type": {"const": "feature"}}, "required": ["record_type"]},
+      "then": {"properties": {"payload": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/feature"}]}}}
+    },
+    {
+      "if": {"properties": {"record_type": {"const": "us_macro"}}, "required": ["record_type"]},
+      "then": {"properties": {"payload": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/usMacro"}]}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "ready"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "event_time": {"$ref": "#/$defs/instant"},
+          "available_at": {"$ref": "#/$defs/instant"},
+          "data_cutoff": {"$ref": "#/$defs/instant"},
+          "source_revision": {"$ref": "#/$defs/identifier"},
+          "code_commit": {"type": "string"},
+          "policy_hash": {"type": "string"},
+          "market_data_hash": {"$ref": "#/$defs/hash"},
+          "payload_sha256": {"$ref": "#/$defs/hash"},
+          "upstream_gate_state": {"const": "passed"},
+          "reason_codes": {"maxItems": 0},
+          "missing_fields": {"maxItems": 0},
+          "payload": {"type": "object"},
+          "availability": {"properties": {"published_at": {"$ref": "#/$defs/instant"}, "received_at": {"$ref": "#/$defs/instant"}}}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"record_type": {"const": "feature"}}, "required": ["record_type"]},
+            "then": {"properties": {"availability": {"properties": {"computed_at": {"$ref": "#/$defs/instant"}, "dependencies": {"minItems": 1}}}}}
+          }
+        ]
+      },
+      "else": {"properties": {"reason_codes": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "missing"}}, "required": ["status"]},
+      "then": {
+        "properties": {"missing_fields": {"minItems": 1}},
+        "anyOf": [
+          {"properties": {"event_time": {"type": "null"}}},
+          {"properties": {"available_at": {"type": "null"}}},
+          {"properties": {"data_cutoff": {"type": "null"}}},
+          {"properties": {"source_revision": {"type": "null"}}},
+          {"properties": {"code_commit": {"type": "null"}}},
+          {"properties": {"policy_hash": {"type": "null"}}},
+          {"properties": {"market_data_hash": {"type": "null"}}},
+          {"properties": {"payload_sha256": {"type": "null"}}},
+          {"properties": {"payload": {"type": "null"}}}
+        ]
+      }
+    },
+    {
+      "if": {"properties": {"record_type": {"enum": ["ohlcv", "us_macro"]}}, "required": ["record_type"]},
+      "then": {"properties": {"availability": {"properties": {"computed_at": {"type": "null"}, "dependencies": {"maxItems": 0}}}}}
+    }
+  ],
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "date": {"type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "instant": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$"},
+    "nullableInstant": {"anyOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}]},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+    "decimal": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_system", "run_id", "record_id", "evidence_sha256", "available_at"],
+      "properties": {
+        "source_system": {"const": "prostock2"},
+        "run_id": {"$ref": "#/$defs/identifier"},
+        "record_id": {"$ref": "#/$defs/identifier"},
+        "evidence_sha256": {"$ref": "#/$defs/hash"},
+        "available_at": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["published_at", "received_at", "computed_at", "embargo_until", "dependencies"],
+      "properties": {
+        "published_at": {"$ref": "#/$defs/nullableInstant"},
+        "received_at": {"$ref": "#/$defs/nullableInstant"},
+        "computed_at": {"$ref": "#/$defs/nullableInstant"},
+        "embargo_until": {"$ref": "#/$defs/nullableInstant"},
+        "dependencies": {"type": "array", "items": {"$ref": "#/$defs/dependency"}}
+      }
+    },
+    "ohlcv": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open", "high", "low", "close", "volume", "bar_start", "calendar_version"],
+      "properties": {
+        "open": {"$ref": "#/$defs/decimal"},
+        "high": {"$ref": "#/$defs/decimal"},
+        "low": {"$ref": "#/$defs/decimal"},
+        "close": {"$ref": "#/$defs/decimal"},
+        "volume": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "bar_start": {"$ref": "#/$defs/instant"},
+        "calendar_version": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "unit"],
+      "properties": {
+        "name": {"$ref": "#/$defs/identifier"},
+        "value": {"$ref": "#/$defs/decimal"},
+        "unit": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "usMacro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["series_id", "value", "unit", "release_timezone", "release_local_date", "release_local_time"],
+      "properties": {
+        "series_id": {"$ref": "#/$defs/identifier"},
+        "value": {"$ref": "#/$defs/decimal"},
+        "unit": {"$ref": "#/$defs/identifier"},
+        "release_timezone": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!Etc/)[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)+$", "description": "IANA location with a slash; Etc/ fixed zones and bare abbreviations are forbidden. Existence and DST consistency are semantic checks."},
+        "release_local_date": {"$ref": "#/$defs/date"},
+        "release_local_time": {"type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,6})?$"}
+      }
+    }
+  }
+}

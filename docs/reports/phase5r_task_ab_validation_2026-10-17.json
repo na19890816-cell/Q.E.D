@@ -1,0 +1,47 @@
+{
+  "phase": "5R",
+  "scope": [
+    "Task A",
+    "Task B"
+  ],
+  "baseline_sha": "a3e63907c2f529f289101698ee7d62f8bf72f436",
+  "targeted": {
+    "unit_passed": 132,
+    "synthetic_integration_passed": 13,
+    "failed": 0,
+    "skipped": 0
+  },
+  "no_db_before": {
+    "phase": "before",
+    "baseline": "a3e6390",
+    "exit_code": 1,
+    "passed": 1606,
+    "failed": 3,
+    "skipped": 70,
+    "failure_ids": [
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+    ]
+  },
+  "no_db_after": {
+    "phase": "after",
+    "baseline": "a3e6390",
+    "exit_code": 1,
+    "passed": 1751,
+    "failed": 3,
+    "skipped": 70,
+    "failure_ids": [
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+    ]
+  },
+  "failure_ids_identical": true,
+  "parent_schema_integration": "HOLD_NOT_RETESTED",
+  "task_c_durable_ingestion_implemented": false,
+  "task_d_trial_logging_implemented": false,
+  "production_written": false,
+  "note008_adoption": "HOLD",
+  "timezone_database": "2026b"
+}
