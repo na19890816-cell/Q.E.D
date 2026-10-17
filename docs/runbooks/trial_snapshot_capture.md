@@ -13,6 +13,8 @@ family 一覧・頻度フィルタ・snapshot_hash を append-only に保存し�
 
 これは**保存時に観測した状態**を再現する仕組みであり、任意の過去日時のコミット済み履歴を復元する機能ではない。
 保存前の観測状態は復元できない。既存 `fetch_trial_snapshot(..., as_of=...)` の結果が後から変化する制約も残る。
+live 読取自体は祖先・edge・batch を単一 SQL で取得するため、一回の呼出し内では整合した可視性を使う。
+詳細は [live 読取の検証](../reports/adr002_live_read_consistency_2026-10-17.md) を参照。
 未来の as-of は DB 時計で拒否する。最新状態を別途保存する際は、新しい as-of を明示して取得する。
 `captured_at` は保存処理中の DB 時刻であり、元 batch のコミット時刻や可視性の境界ではない。
 

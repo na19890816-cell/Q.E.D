@@ -215,6 +215,18 @@ payload 全体のハッシュで集計値も検証する。全問合せは同一
 詳細と利用手順は [固定保存 runbook](../runbooks/trial_snapshot_capture.md)、検証は
 [検証記録](../reports/adr002_snapshot_capture_validation_2026-10-17.md) を参照。
 
+### 4.12 live 読取りの可視性と日時規則
+
+`postgres_lineage_bridge.load_ledger_for_family` は、祖先・edge・batch を単一 SQL で読む。
+READ COMMITTED でも、一つの読取結果に複数のコミット状態を混ぜない。
+direct-only は batch の単一 SELECT とし、edge の参照権限・存在への依存を増やさない。
+SQL の cutoff はコアと同じ UTC 規則（naive datetime は UTC）へ正規化する。
+API の引数・戻り値と caller のトランザクションを維持する。
+
+これは一回の読取整合性であり、同じ壁時計 as-of の将来の再問合せが不変になる保証ではない。
+観測済み結果の再現は §4.11 の固定保存で扱う。
+再現手順と互換性の検証は [live 読取レビュー](../reports/adr002_live_read_consistency_2026-10-17.md) を参照。
+
 ## 5. 実装（本 ADR と同時に追加）
 
 | ファイル | 内容 |

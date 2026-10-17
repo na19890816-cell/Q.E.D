@@ -1,7 +1,7 @@
 """Persist the first observed ledger snapshot for an explicit read context.
 
 A capture freezes observed inputs; it does not reconstruct commit-time history.
-The existing ledger reader and decision paths remain unchanged.
+Captures use the public ledger reader without changing decision paths.
 """
 from __future__ import annotations
 
