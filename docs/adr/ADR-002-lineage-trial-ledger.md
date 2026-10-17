@@ -202,6 +202,19 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 - S1/S2 で登録済みの評価結果の再梱包には使用しない。S3 後に独立した FROST 評価を実施する場合は S2 がその別評価を計上する。
   stage/run 横断の N_raw 集計規則（§4.7）は変更しない。
 
+### 4.11 観測したスナップショットの固定保存
+
+独立した `capture_trial_snapshot.py` と migration 087 で、実際に読んだ batch ID 全件・N・
+SR 十分統計量・family・頻度・snapshot_hash を append-only に保存する。
+同じ family / as-of / 頻度 / 祖先設定なら最初の保存結果を返し、保存 ID からも再取得できる。
+payload 全体のハッシュで集計値も検証する。全問合せは同一の REPEATABLE READ 可視性を使い、
+同時保存の競合は新しいトランザクションで再試行する。
+
+これは保存時に観測した入力の再現であり、任意の過去時刻のコミット済み集合の復元ではない。
+既存 live 読取 API の as-of の制約は残る。既存 DSR・FROST・昇格判定への配線は変更しない。
+詳細と利用手順は [固定保存 runbook](../runbooks/trial_snapshot_capture.md)、検証は
+[検証記録](../reports/adr002_snapshot_capture_validation_2026-10-17.md) を参照。
+
 ## 5. 実装（本 ADR と同時に追加）
 
 | ファイル | 内容 |
@@ -217,6 +230,9 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 | `analytics/python/frost/manual_trial_ledger.py` | S3 証拠検証・N 検算・原バイト/正規化 SHA-256 |
 | `analytics/python/pg_io/postgres_manual_trial_bridge.py` | S3 冪等登録・衝突拒否・DB 登録時刻 |
 | `qedschema/migrations/086_qed_manual_trial_imports.sql` | S3 append-only receipt（既存テーブルへの変更なし） |
+| `qedschema/migrations/087_qed_trial_snapshot_captures.sql` | 観測した読取入力の append-only 保存 |
+| `analytics/python/pg_io/postgres_trial_snapshot_capture.py` | 同一可視性での保存・保存 ID による再取得 |
+| `scripts/postgres/capture_trial_snapshot.py` | 独立した監査用 capture / show CLI |
 | `scripts/postgres/register_manual_trials.py` | S3 検証/登録 CLI |
 | `tests/unit/test_adr002_s3_manual_ledger.py` / `tests/integration/test_adr002_s3_manual_pg.py` | S3 単体・実 PostgreSQL テスト |
 
