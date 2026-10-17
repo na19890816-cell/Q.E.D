@@ -1,0 +1,169 @@
+"""S3 real PostgreSQL: atomicity, conflict detection, concurrency and as-of."""
+from __future__ import annotations
+
+import copy
+import json
+import os
+import subprocess
+import sys
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from pathlib import Path
+from threading import Barrier
+
+import pytest
+
+from analytics.python.frost.manual_trial_ledger import parse_manual_evidence
+from analytics.python.pg_io.postgres_lineage_bridge import fetch_trial_snapshot, insert_trial_batch
+from analytics.python.pg_io.postgres_manual_trial_bridge import ManualImportConflict, register_manual_trials
+from tests.unit.test_adr002_s3_manual_ledger import evidence_doc, raw
+
+DSN = os.environ.get("QED_PG_DSN", "")
+pytestmark = pytest.mark.skipif(not DSN, reason="QED_PG_DSN not configured")
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(scope="module")
+def conn():
+    import psycopg
+    with psycopg.connect(DSN, autocommit=True) as c:
+        c.execute("CREATE TABLE IF NOT EXISTS _migrations(filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now())")
+        for _ in range(2):
+            for name in ("084_qed_trial_ledger.sql", "086_qed_manual_trial_imports.sql"):
+                c.execute((ROOT / "qedschema/migrations" / name).read_text())
+        yield c
+
+
+@pytest.fixture
+def doc():
+    d = evidence_doc()
+    d["source"] = uuid.uuid4().hex
+    d["family"]["universe"] = uuid.uuid4().hex
+    return d
+
+
+def submission(doc):
+    return parse_manual_evidence(raw(doc), doc["n_trials"], "integration-test")
+
+
+def test_register_retry_exact_hash_and_asof(conn, doc):
+    s = submission(doc)
+    before = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+    first = register_manual_trials(conn, s)
+    second = register_manual_trials(conn, s)
+    assert first.inserted and not second.inserted
+    assert first.recorded_at == second.recorded_at and first.recorded_at >= before
+    assert fetch_trial_snapshot(conn, s.batch.family_key, as_of=before).n_trials == 0
+    snapshot = fetch_trial_snapshot(conn, s.batch.family_key, as_of=first.recorded_at)
+    assert snapshot.n_trials == 2 and snapshot.to_dsr_kwargs() == {"n_trials": 2}
+    row = conn.execute("SELECT n_trials,metadata,recorded_at FROM qed_trial_batches WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()
+    assert row[0] == 2 and row[1]["evidence_sha256"] == s.evidence_sha256
+    assert row[2] == first.recorded_at
+
+
+@pytest.mark.parametrize("change", ["n", "family", "evidence"])
+def test_same_identity_conflicting_payload_rejected(conn, doc, change):
+    first = submission(doc)
+    register_manual_trials(conn, first)
+    changed = copy.deepcopy(doc)
+    if change == "n":
+        changed["n_trials"] = 1
+        changed["trials"] = changed["trials"][:1]
+    elif change == "family":
+        changed["family"]["horizon"] = "20d"
+    else:
+        changed["trials"][0]["formula"] = "new-formula"
+    with pytest.raises(ManualImportConflict):
+        register_manual_trials(conn, submission(changed))
+    assert fetch_trial_snapshot(conn, first.batch.family_key).n_trials == 2
+
+
+def test_relabelled_reformatted_evidence_is_atomic_conflict(conn, doc):
+    register_manual_trials(conn, submission(doc))
+    doc["research_run_id"] = "renamed-run"
+    doc["source"] += "-renamed"
+    doc["trials"].reverse()
+    s = submission(doc)
+    with pytest.raises(ManualImportConflict, match="already registered"):
+        register_manual_trials(conn, s)
+    assert conn.execute("SELECT count(*) FROM qed_trial_batches WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
+
+
+def test_future_evidence_rejected_without_partial_writes(conn, doc):
+    doc["completed_at"] = (conn.execute("SELECT clock_timestamp()").fetchone()[0] + timedelta(days=1)).isoformat()
+    s = submission(doc)
+    with pytest.raises(ValueError, match="future"):
+        register_manual_trials(conn, s)
+    assert conn.execute("SELECT count(*) FROM qed_trial_batches WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
+
+
+def test_long_running_transaction_cannot_backdate(conn, doc):
+    import psycopg
+    s = submission(doc)
+    with psycopg.connect(DSN) as c:
+        c.execute("SELECT now()")  # establish transaction start before as_of
+        before = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+        result = register_manual_trials(c, s)
+    assert result.recorded_at > before
+    assert fetch_trial_snapshot(conn, s.batch.family_key, as_of=before).n_trials == 0
+
+
+def test_orphan_existing_batch_is_not_silently_accepted(conn, doc):
+    s = submission(doc)
+    assert insert_trial_batch(conn, s.batch)
+    with pytest.raises(ManualImportConflict, match="without a matching"):
+        register_manual_trials(conn, s)
+
+
+def test_caller_rollback_removes_receipt_and_batch(conn, doc):
+    import psycopg
+    s = submission(doc)
+    with pytest.raises(RuntimeError, match="caller failed"):
+        with psycopg.connect(DSN) as c:
+            register_manual_trials(c, s)
+            raise RuntimeError("caller failed")
+    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+        assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
+    assert register_manual_trials(conn, s).inserted
+
+
+def test_receipts_append_only(conn, doc):
+    import psycopg
+    result = register_manual_trials(conn, submission(doc))
+    for operation in ("UPDATE qed_manual_trial_imports SET n_trials=1", "DELETE FROM qed_manual_trial_imports"):
+        with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+            conn.execute(operation + " WHERE batch_id=%s", (result.batch_id,))
+
+
+@pytest.mark.parametrize("relabel", [False, True])
+def test_concurrent_duplicate_registration(conn, doc, relabel):
+    import psycopg
+    docs = [doc, copy.deepcopy(doc)]
+    if relabel:
+        docs[1]["research_run_id"] += "-other"
+    barrier = Barrier(2)
+
+    def write(d):
+        with psycopg.connect(DSN) as c:
+            barrier.wait(timeout=10)
+            try:
+                return register_manual_trials(c, submission(d)).inserted
+            except ManualImportConflict:
+                return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(write, docs))
+    assert results.count(True) == 1
+    assert ("conflict" in results) if relabel else (results.count(False) == 1)
+    assert fetch_trial_snapshot(conn, submission(doc).batch.family_key).n_trials == 2
+
+
+def test_cli_write_and_retry(conn, doc, tmp_path):
+    evidence = tmp_path / "evidence.json"
+    evidence.write_bytes(raw(doc))
+    command = [sys.executable, str(ROOT / "scripts/postgres/register_manual_trials.py"),
+               "--evidence", str(evidence), "--n-trials", "2", "--submitted-by", "cli-test", "--write-db"]
+    for expected in ("inserted", "already_registered"):
+        result = subprocess.run(command, text=True, capture_output=True, check=True)
+        assert json.loads(result.stdout)["status"] == expected
