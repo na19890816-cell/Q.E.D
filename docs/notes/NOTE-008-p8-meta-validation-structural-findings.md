@@ -5,7 +5,7 @@
 レポートは `docs/reports/frost_meta_validation_synthetic_2026-10-03.md`。
 **種別**: 選抜器設計の課題（A1 / A3 の検証結果）
 **優先度**: 中
-**ステータス**: Note登録済み・未着手
+**ステータス**: 実データ・全探索N未取得のため採用評価Hold（2026-10-17所在監査済み）
 **コード変更**: なし。P8 は観測のみ。ポリシー変更はこの Note を通じて通常の検証サイクルに回す。
 
 ---
@@ -16,19 +16,24 @@
 合成データの数値（反転率など）は本番の性質を表さない。
 数値は golden dataset を抽出したあとに再測定する（§4）。
 
-## 1. 所見 A — `w_regime_stability` は Gate 通過候補の間で順位に効かない
+## 1. 所見 A — 全レジーム観測済み・現閾値の条件では軸が定数になる
 
-- `regime_pass_ratio_raw` は 3 レジーム（bull/bear/crisis）中で Sharpe > 0 のレジームの割合なので、{0, 1/3, 2/3, 1} の 4 値しか取らない。
-- Hard Gate `min_regime_pass_ratio = 0.75` を通過できるのは **ratio = 1.0 の候補だけ**。
+- bull/bear/crisisの3レジームすべてでSharpeを観測できれば、比率は {0, 1/3, 2/3, 1} となる。
+  欠落時は観測できたレジームだけが分母になり、1/2等や全欠落のNoneも取り得る。
+- 3レジーム観測済み、かつ `min_regime_pass_ratio = 0.75` なら、通過できるのは **ratio = 1.0 の候補だけ**。
 - `compute_regime_stability_score = min(1, ratio + crisis_bonus)` で、ratio = 1.0 なら **常に 1.0**。
-- したがって、Gate 通過集合では regime_stability 軸が定数になる。
+- したがって、上記条件の集合ではregime_stability軸が定数になる。
   - 重み 0.15（v1 正方向重み 0.70 の 21%）は、全員のスコアに一律 +0.15 を足すだけ。
   - 選抜にも順位にも寄与しない。
 - 実測（合成データ、seed 7/11/23）では、ablation 後の Kendall τ（Gate 通過のみ）がいずれも **1.000** だった。
 - 閾値の掃引でも、0.67〜1.0 の範囲は通過集合が同一になる（離散 4 値のため）。
   - したがって、閾値感度で ±10/20% 動かしても regime_pass_ratio の反転率がほぼ 0 なのは、頑健だからではない。**離散化による見かけの安定**である。
 
-**含意**: 軸は実質「ゲートの二重計上」になっている。主な選択肢は次の 3 つ。
+欠落候補には無条件に一般化できない。現行gateはratio=Noneをその条件だけで拒否せず、
+scoreは0.5へフォールバックするため、他gate通過時にratio=1のscore1.0と混在し得る。
+実データでは全観測/一部欠落/全欠落を分けて通過数・定数性を測る。欠落許容のgate自体は今回変更していない。
+
+**含意**: 上記条件内では軸がゲートと重複している。主な観測専用の比較案は次の3つ。
 
 1. 重みを他軸に再配分する
 2. スコア側をレジームの Sharpe の連続値（最小レジーム Sharpe など）に置き換える
@@ -36,17 +41,18 @@
 
 どれを選ぶかは gate-0 評価で決める。
 
-## 2. 所見 B — top_k が拘束しないと、重みは SELECTED 集合に一切効かない
+## 2. 所見 B — top_k非拘束だけでは重みの影響を判定できない
 
 - `select_diverse_top_k` は、Gate 通過候補をスコア順に top_k 件まで採る。
-  - Gate 通過数 ≤ top_k（既定 25）のときは、**SELECTED 集合は Gate だけで決まる**。
-  - このとき 10 軸の重みは、`promotion_top_k`（既定 5）の選別と borderline の REVIEW_REQUIRED 判定にしか効かない。
+  - Gate 通過数 ≤ top_k（既定 25）のとき、件数上限としてのtop_kは非拘束となる。
+  - ただしnear-duplicate抑制・family上限・最終ポリシーもある。件数条件だけからSELECTED集合がGateだけで決まるとは断定しない。
+    それらも非拘束の場合に限り、重みの影響は昇格上位・borderline等へ限定される。
 - 合成データ（Gate 通過 19 < 25）では、全 10 軸の ablation で TOP_K Jaccard = 1.0 になった。
 - メタ検証レポートは、この状態を `top_k_binding=false` として警告する。
   - 重みの評価には、昇格上位 Jaccard（promo_jaccard）と τ（Gate 通過のみ）を使う。
 
-**含意**: 本番で Gate 通過数が常時 top_k 未満なら、A1（軸削除）の議論は「昇格上位 5 件の並び」に限定してよい。
-本番での Gate 通過数の分布を確認すること（`frost_evaluations.hard_gate_passed` の run 別集計）。
+**含意**: 本番のGate通過数とtop_kだけでなく、family/duplicate制約、全決定区分、最終promotion eligibilityをrun別に確認する。
+既存 `promo_jaccard` はGate通過候補の単純スコア上位集合の指標で、人間承認を経た実昇格集合の一致ではない。
 
 ## 3. 所見 C — 昇格上位の境界は僅差になりやすい（A3 関連）
 
@@ -57,10 +63,11 @@
 
 ## 4. 次のアクション
 
-1. golden dataset を抽出する（`Makefile.golden`）。そのうえで次を実行し、数値を本番の性質で置き換える。
-   ```
-   python scripts/frost/run_frost_meta_validation.py --candidates-json <golden>.json --write-db
-   ```
-2. 所見 A の対応案（1〜3）を gate-0 評価にかける。
-   - 現行の PolicySpec を変える場合は policy_hash が変わるので、golden baseline を再生成する。
-3. NOTE-004 / NOTE-005（追加ゲート候補）の gate-0 評価には、同じ `threshold_sensitivity` を使う。
+1. [実データ取得・検証契約](../runbooks/frost_meta_real_data.md)に従い、全run・非生存候補・全探索N・時刻・policy・returnsを固定する。
+   既存Makefile.goldenはEvent Study CSV用であり、P8候補JSONや監査provenanceを生成するものではない。
+2. Nが不明な間は採用評価を停止する。合成120候補の既存結果を実運用の結論へ置き換えない。
+3. A0〜A3の対照、seed、試行数、閾値/重み設定、確認用期間を実験前に登録する。現行PolicySpecは変更しない。
+4. 観測はDB保存なしで行う。既存baseline再生成、本番DB書込み、Draft解除、昇格は人間の別途承認なしに実施しない。
+5. NOTE-004/005のGate-0はPhase 3の実データ結果を得た後に別作業で行う。既存threshold_sensitivityだけで新ゲートの増分価値を検証済みとは扱わない。
+
+所在監査と停止理由は[Phase 3記録](../reports/note008_phase3_data_readiness_2026-10-17.md)を参照。
