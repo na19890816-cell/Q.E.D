@@ -40,6 +40,7 @@ def test_full_inventory_exact_hash_and_existing_family_definition(source_type):
     assert batch.family_key == make_family_key(**doc["family"])
     assert batch.metadata["evidence_sha256"] == submission.evidence_sha256
     assert batch.metadata["submitted_by"] == "operator"
+    assert batch.metadata["inventory_hash_version"] == 2
     assert batch.metadata["complete"] is True
     assert batch.recorded_at is None and batch.sr_stats.count == 0
 
@@ -65,6 +66,19 @@ def test_semantic_hash_blocks_relabeling_reordering_and_whitespace():
     assert x.inventory_sha256 == y.inventory_sha256
     assert x.evidence_sha256 != y.evidence_sha256
     assert x.batch.batch_id != y.batch.batch_id
+
+
+def test_inventory_hash_ignores_a_different_completion_time_and_identity():
+    a = evidence_doc()
+    b = copy.deepcopy(a)
+    b.update(source="another-desk", research_run_id="another-run",
+             completed_at="2026-01-03T12:00:00Z")
+    first = parse_manual_evidence(raw(a), 2, "operator")
+    renamed = parse_manual_evidence(raw(b), 2, "another-operator")
+    assert first.inventory_sha256 == renamed.inventory_sha256
+    assert first.evidence_sha256 != renamed.evidence_sha256
+    assert first.batch.batch_id != renamed.batch.batch_id
+    assert first.completed_at != renamed.completed_at
 
 
 def test_identity_independent_of_n_and_evidence():
@@ -141,6 +155,7 @@ def test_cli_validates_without_dsn(tmp_path, monkeypatch, capsys):
     assert main(["--evidence", str(path), "--n-trials", "2", "--submitted-by", "operator"]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "validated_only" and output["n_trials"] == 2
+    assert output["inventory_hash_version"] == 2
     assert main(["--evidence", str(path), "--n-trials", "1", "--submitted-by", "operator"]) == 1
     assert "n_trials" in capsys.readouterr().err
     assert main(["--evidence", str(path), "--n-trials", "2", "--submitted-by", "operator", "--write-db"]) == 1

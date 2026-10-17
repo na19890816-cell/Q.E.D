@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from analytics.python.frost.manual_trial_ledger import parse_manual_evidence
+from analytics.python.frost.manual_trial_ledger import INVENTORY_HASH_VERSION, parse_manual_evidence
 
 
 def main(argv=None) -> int:
@@ -24,6 +24,7 @@ def main(argv=None) -> int:
         submission = parse_manual_evidence(args.evidence.read_bytes(), args.n_trials, args.submitted_by)
         result = {"batch_id": submission.batch.batch_id, "family_key": submission.batch.family_key,
                   "n_trials": submission.batch.n_trials, "evidence_sha256": submission.evidence_sha256,
+                  "inventory_hash_version": INVENTORY_HASH_VERSION,
                   "inventory_sha256": submission.inventory_sha256, "status": "validated_only"}
         if args.write_db:
             import psycopg

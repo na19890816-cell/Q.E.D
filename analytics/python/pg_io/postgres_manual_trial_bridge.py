@@ -11,7 +11,7 @@ from datetime import datetime
 
 import psycopg
 
-from analytics.python.frost.manual_trial_ledger import ManualTrialSubmission
+from analytics.python.frost.manual_trial_ledger import INVENTORY_HASH_VERSION, ManualTrialSubmission
 from analytics.python.pg_io.postgres_lineage_bridge import _INSERT_BATCH_SQL
 
 
@@ -30,8 +30,11 @@ def register_manual_trials(conn: psycopg.Connection, submission: ManualTrialSubm
     """Use database wall time, not transaction-start time or evidence time.
 
     Deliberately no recorded_at / as_of override and no fail-open on missing tables.
+    recorded_at precedes commit: a wall-clock as_of alone cannot freeze MVCC history.
     """
     batch = submission.batch
+    if batch.metadata.get("inventory_hash_version") != INVENTORY_HASH_VERSION:
+        raise ValueError("unsupported inventory hash version; revalidate the original evidence")
     if not conn.autocommit and conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE:
         # psycopg.transaction() on an idle connection commits a top-level
         # transaction. Establish the caller-owned transaction first so that
@@ -42,6 +45,17 @@ def register_manual_trials(conn: psycopg.Connection, submission: ManualTrialSubm
             with conn.cursor() as cur:
                 # Same identity is serialized before checking its immutable receipt.
                 cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (batch.batch_id,))
+                # Old digests include completed_at and cannot be converted from
+                # the digest alone. Never silently mix hash versions for a family.
+                cur.execute(
+                    "SELECT 1 FROM qed_manual_trial_imports r "
+                    "JOIN qed_trial_batches b ON b.batch_id=r.batch_id "
+                    "WHERE b.family_key=%s AND "
+                    "b.metadata->>'inventory_hash_version' IS DISTINCT FROM %s LIMIT 1",
+                    (batch.family_key, str(INVENTORY_HASH_VERSION)),
+                )
+                if cur.fetchone():
+                    raise ManualImportConflict("legacy inventory hashes require audit before new imports for this family")
                 cur.execute(
                     "SELECT batch_id, evidence_sha256, inventory_sha256, n_trials, recorded_at "
                     "FROM qed_manual_trial_imports WHERE source=%s AND research_run_id=%s",

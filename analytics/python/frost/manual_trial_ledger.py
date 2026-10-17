@@ -16,6 +16,9 @@ from analytics.python.frost.frost_lineage import (
 )
 
 
+INVENTORY_HASH_VERSION = 2
+
+
 def _text(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name}: nonempty string required")
@@ -105,9 +108,11 @@ def parse_manual_evidence(
     actual_n = len({trial["formula"] for trial in inventory})
     if actual_n != n_trials:
         raise ValueError(f"n_trials: declared {n_trials}, inventory has {actual_n} distinct formulas")
-    # Labels, ordering, JSON whitespace and formula whitespace cannot evade dedup.
+    # Completion time describes the submission, not a distinct evaluation. Keep
+    # it in the raw evidence/metadata, outside the versioned inventory identity.
+    # Trial-level evaluation/cutoff times still distinguish independent evaluations.
     unique_rows = sorted({json.dumps(t, sort_keys=True, separators=(",", ":")) for t in inventory})
-    canonical = json.dumps({"family": spec, "completed_at": completed.isoformat(),
+    canonical = json.dumps({"inventory_hash_version": INVENTORY_HASH_VERSION, "family": spec,
                             "trials": unique_rows},
                            sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     raw_hash = hashlib.sha256(evidence).hexdigest()
@@ -117,6 +122,7 @@ def parse_manual_evidence(
         family, "manual:" + hashlib.sha256(identity.encode()).hexdigest(), "manual", actual_n,
         source_type=doc["source_type"], family_spec=family_spec_dict(**spec),
         metadata={"manual_ledger_version": 1, "source": source, "research_run_id": run_id,
+                  "inventory_hash_version": INVENTORY_HASH_VERSION,
                   "evidence_sha256": raw_hash, "inventory_sha256": inventory_hash,
                   "submitted_by": submitted_by, "complete": True,
                   "completed_at": completed.isoformat(), "inventory_rows": len(inventory)},

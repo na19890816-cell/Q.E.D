@@ -185,11 +185,18 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 - 完全一覧（棄却・未保存の候補も含む）を必須とし、空白正規化した異なる式数が証拠内・CLI の N と一致しなければ拒否する。
 - `stage='manual'`、`source_type='manual'|'external'`、SR 統計なしで既存台帳へ追記する。
 - 証拠の原バイト SHA-256 と、正規化した一覧の SHA-256 を batch metadata と新規の append-only receipt に保存する。
+  一覧ハッシュ v2 は family と試行行（式・評価時刻・データ締切）の集合を対象とし、提出全体の完了時刻は除外する。
+  完了時刻や ID だけを変えた同じ試行の再登録を許さない。完了時刻は原証拠・metadata・receipt には保持する。
+  旧ハッシュの receipt がある family は原証拠の復元・重複監査まで新規登録を拒否し、新旧 CLI は混在させない。
 - `source × research_run_id` を不変の登録識別子とする。完全一致の再実行は冪等、件数・証拠・family の差し替えはエラー。
   receipt の UNIQUE 制約は、ラベル変更・整形・行並べ替え・同じ行の重複による二重登録も防止する。同時登録も同じ規則となる。
 - batch と receipt は同じトランザクションで登録し、失敗時は両方を取り消す。
 - `recorded_at` は DB の `clock_timestamp()`（トランザクション開始時刻ではない）。入力による上書き・遡及登録を許さない。
-  `data_cutoff <= evaluated_at <= completed_at <= DB 登録時刻` を検証する。過去の完了日を申告しても、過去の snapshot には入らない。
+  `data_cutoff <= evaluated_at <= completed_at <= DB 登録時刻` を検証する。`as_of < recorded_at` には含めない。
+  ただし登録時刻とコミット時刻の間を as-of とする snapshot はコミット後に変わり得る。壁時計 as-of 単独では
+  当時の可視集合の不変性を保証しない。REPEATABLE READ も新トランザクションでの再現性は保証しない。
+  この制約は実 DB テストで記録し、既存判定・読取りロジックは変更しない。詳細は
+  [PR #1 追加レビュー](../reports/adr002_s3_pr1_review_2026-10-17.md) を参照。
 - 手動で隠された試行や虚偽の時刻は、SHA-256 だけでは検出できない。`complete=true` は生産者による完全性の宣言であり、
   上流の探索ログとの照合が必要。実装が保証するのは提出された証拠との整合性・一意性・登録時刻である。
 - S1/S2 で登録済みの評価結果の再梱包には使用しない。S3 後に独立した FROST 評価を実施する場合は S2 がその別評価を計上する。

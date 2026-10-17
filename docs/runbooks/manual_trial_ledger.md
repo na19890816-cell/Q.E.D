@@ -77,11 +77,28 @@ python scripts/postgres/register_manual_trials.py \
 
 原ファイルの SHA-256 と正規化した一覧の SHA-256 は
 `qed_trial_batches.metadata` と `qed_manual_trial_imports` に保存する。
+一覧ハッシュは `inventory_hash_version=2` とし、family と、式・評価時刻・データ締切を正規化した
+試行行の集合から計算する。提出全体の `completed_at`、source/run ID、担当者は含めない。
+同じ一覧の完了時刻や ID を変えても新しい試行にはならない。
+`completed_at` は原証拠の SHA-256、metadata、receipt に引き続き保存・検証するため、
+同じ ID の完了時刻差し替えも拒否する。試行行の評価時刻が異なる独立評価は従来どおり別に計上する。
 原ファイル自体は DB に複製しないため、提出元の完全なログと共にアクセス制御された場所に保管する。
 receipt も batch も append-only。修正は上書きではなく、原因を調査して別途監査手順を決める。
 
+この Draft の旧版（`95ecf78`）で試用した receipt は完了時刻を含む旧ハッシュであり、
+ハッシュだけから新形式に変換できない。新 CLI は旧形式の receipt がある family の登録・再送を拒否する。
+旧 CLI を停止し、新 CLI に統一する。旧データは原証拠を復元して重複監査・移行方針を決めるまで保持し、
+自動再ハッシュ・UPDATE・DELETE で帳尻を合わせない。新旧 CLI の混在運用はサポートしない。
+
 `recorded_at` は DB 壁時計で決定し、証拠内の完了時刻やトランザクション開始時刻では決めない。
-後日提出された証拠が過去の as-of snapshot に入ることはない。
+`as_of < recorded_at` の snapshot に後から入ることはない。ただし `recorded_at` はコミット時刻ではない。
+登録後・コミット前の時刻を as-of とする読取りは、コミット前には N=0、コミット後には N=2 に変わり得る。
+READ COMMITTED では再問合せごとに変わり、REPEATABLE READ でも新トランザクションでは変わる。
+短いトランザクションや CLI の即時コミットは、この時刻境界の不変性を保証しない。
+固定した壁時計日時と snapshot_hash だけでは当時の可視集合を復元できないため、監査には実際に参照した
+batch ID 全件と集計入力を保存する必要がある。現在の CLI はその監査保存を実装していない。
+コミット可視性を基準とする履歴の固定は未実装であり、既存 DSR・FROST・昇格ロジックと読取り API は変更していない。
+再現テストと結果は [PR #1 追加レビュー記録](../reports/adr002_s3_pr1_review_2026-10-17.md) を参照。
 
 S1/S2 で登録した同一評価の再梱包には本 CLI を使わない。独立した再評価や別 stage の N_raw 加算規則は変更しない。
 上流が隠した試行・虚偽の出典や時刻はハッシュだけで証明できない。

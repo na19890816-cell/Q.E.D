@@ -8,6 +8,7 @@ import subprocess
 import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from threading import Barrier
@@ -62,7 +63,7 @@ def test_register_retry_exact_hash_and_asof(conn, doc):
     assert row[2] == first.recorded_at
 
 
-@pytest.mark.parametrize("change", ["n", "family", "evidence"])
+@pytest.mark.parametrize("change", ["n", "family", "evidence", "completed_at"])
 def test_same_identity_conflicting_payload_rejected(conn, doc, change):
     first = submission(doc)
     register_manual_trials(conn, first)
@@ -72,6 +73,8 @@ def test_same_identity_conflicting_payload_rejected(conn, doc, change):
         changed["trials"] = changed["trials"][:1]
     elif change == "family":
         changed["family"]["horizon"] = "20d"
+    elif change == "completed_at":
+        changed["completed_at"] = "2026-01-03T12:00:00Z"
     else:
         changed["trials"][0]["formula"] = "new-formula"
     with pytest.raises(ManualImportConflict):
@@ -88,6 +91,68 @@ def test_relabelled_reformatted_evidence_is_atomic_conflict(conn, doc):
     with pytest.raises(ManualImportConflict, match="already registered"):
         register_manual_trials(conn, s)
     assert conn.execute("SELECT count(*) FROM qed_trial_batches WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("rename_source", [False, True])
+def test_changed_completion_time_cannot_recount_inventory(conn, doc, rename_source):
+    original = submission(doc)
+    register_manual_trials(conn, original)
+    changed = copy.deepcopy(doc)
+    changed.update(research_run_id="another-run", completed_at="2026-01-03T12:00:00Z")
+    if rename_source:
+        changed["source"] += "-renamed"
+    duplicate = submission(changed)
+    with pytest.raises(ManualImportConflict, match="already registered"):
+        register_manual_trials(conn, duplicate)
+    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+        assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s", (duplicate.batch.batch_id,)).fetchone()[0] == 0
+    assert fetch_trial_snapshot(conn, original.batch.family_key).n_trials == 2
+
+
+def test_legacy_hash_receipt_requires_audit_before_new_family_imports(conn, doc):
+    original = submission(doc)
+    metadata = dict(original.batch.metadata)
+    metadata.pop("inventory_hash_version", None)
+    assert insert_trial_batch(conn, replace(original.batch, metadata=metadata))
+    # A pre-review receipt has no inventory-hash version; its original inventory
+    # cannot be recovered from the digest alone. Keep it immutable and fail closed.
+    conn.execute(
+        "INSERT INTO qed_manual_trial_imports "
+        "(source,research_run_id,batch_id,evidence_sha256,inventory_sha256,n_trials,"
+        "completed_at,submitted_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+        (original.source, original.research_run_id, original.batch.batch_id,
+         original.evidence_sha256, original.inventory_sha256, original.batch.n_trials,
+         original.completed_at, original.submitted_by),
+    )
+    changed = copy.deepcopy(doc)
+    changed.update(research_run_id="another-run", completed_at="2026-01-03T12:00:00Z")
+    with pytest.raises(ManualImportConflict, match="legacy.*audit"):
+        register_manual_trials(conn, submission(changed))
+    assert fetch_trial_snapshot(conn, original.batch.family_key).n_trials == 2
+    changed["family"]["universe"] += "-independent"
+    assert register_manual_trials(conn, submission(changed)).inserted
+
+
+def test_independent_evaluation_times_remain_distinct_trials(conn, doc):
+    first = submission(doc)
+    assert register_manual_trials(conn, first).inserted
+    changed = copy.deepcopy(doc)
+    changed.update(research_run_id="independent-evaluation", completed_at="2026-01-03T12:00:00Z")
+    for trial in changed["trials"]:
+        trial["evaluated_at"] = "2026-01-03T11:00:00Z"
+    assert register_manual_trials(conn, submission(changed)).inserted
+    assert fetch_trial_snapshot(conn, first.batch.family_key).n_trials == 4
+
+
+def test_unversioned_submission_is_rejected_without_writes(conn, doc):
+    s = submission(doc)
+    metadata = dict(s.batch.metadata)
+    metadata.pop("inventory_hash_version", None)
+    stale = replace(s, batch=replace(s.batch, metadata=metadata))
+    with pytest.raises(ValueError, match="unsupported inventory hash version"):
+        register_manual_trials(conn, stale)
+    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+        assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
 
 
 def test_future_evidence_rejected_without_partial_writes(conn, doc):
@@ -107,6 +172,29 @@ def test_long_running_transaction_cannot_backdate(conn, doc):
         result = register_manual_trials(c, s)
     assert result.recorded_at > before
     assert fetch_trial_snapshot(conn, s.batch.family_key, as_of=before).n_trials == 0
+
+
+@pytest.mark.parametrize("isolation", ["READ_COMMITTED", "REPEATABLE_READ"])
+def test_asof_between_registration_and_commit_is_not_a_frozen_history(conn, doc, isolation):
+    """Characterize the existing reader's limitation, not an immutability guarantee."""
+    import psycopg
+    s = submission(doc)
+    with psycopg.connect(DSN) as writer, psycopg.connect(DSN) as reader:
+        reader.isolation_level = getattr(psycopg.IsolationLevel, isolation)
+        result = register_manual_trials(writer, s)
+        cutoff = reader.execute("SELECT clock_timestamp()").fetchone()[0]
+        assert result.recorded_at < cutoff
+        before = fetch_trial_snapshot(reader, s.batch.family_key, as_of=cutoff)
+        assert before.n_trials == 0
+        writer.commit()
+        same_transaction = fetch_trial_snapshot(reader, s.batch.family_key, as_of=cutoff)
+        assert same_transaction.n_trials == (0 if isolation == "REPEATABLE_READ" else 2)
+        reader.commit()
+        later = fetch_trial_snapshot(reader, s.batch.family_key, as_of=cutoff)
+        assert later.n_trials == 2
+        assert later.snapshot_hash != before.snapshot_hash
+        assert fetch_trial_snapshot(reader, s.batch.family_key,
+                                    as_of=result.recorded_at - timedelta(microseconds=1)).n_trials == 0
 
 
 def test_orphan_existing_batch_is_not_silently_accepted(conn, doc):
@@ -136,12 +224,14 @@ def test_receipts_append_only(conn, doc):
             conn.execute(operation + " WHERE batch_id=%s", (result.batch_id,))
 
 
-@pytest.mark.parametrize("relabel", [False, True])
-def test_concurrent_duplicate_registration(conn, doc, relabel):
+@pytest.mark.parametrize("mode", ["retry", "relabel", "relabel_and_completion_time"])
+def test_concurrent_duplicate_registration(conn, doc, mode):
     import psycopg
     docs = [doc, copy.deepcopy(doc)]
-    if relabel:
+    if mode != "retry":
         docs[1]["research_run_id"] += "-other"
+    if mode == "relabel_and_completion_time":
+        docs[1]["completed_at"] = "2026-01-03T12:00:00Z"
     barrier = Barrier(2)
 
     def write(d):
@@ -155,8 +245,13 @@ def test_concurrent_duplicate_registration(conn, doc, relabel):
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(write, docs))
     assert results.count(True) == 1
-    assert ("conflict" in results) if relabel else (results.count(False) == 1)
+    assert ("conflict" in results) if mode != "retry" else (results.count(False) == 1)
     assert fetch_trial_snapshot(conn, submission(doc).batch.family_key).n_trials == 2
+    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+        assert conn.execute(
+            f"SELECT count(*) FROM {table} WHERE batch_id=ANY(%s)",
+            ([submission(d).batch.batch_id for d in docs],),
+        ).fetchone()[0] == 1
 
 
 def test_cli_write_and_retry(conn, doc, tmp_path):
