@@ -111,7 +111,7 @@ qed_lineage_edges (
 |---|---|---|---|
 | S1 | `eml_search.exhaustive_search` / `gradient_search` | top_k 前の**異なる式数**（+ 木の数・fitness 統計は metadata） | ✅ **実装済み**（任意引数 `stats_out`。旧版との出力バイト一致で golden 非影響を確認） |
 | S2 | `frost_runner.run_frost_pipeline` | **非 EML 候補**の異なる candidate_hash 数 + oos_sharpe 統計（全件評価なので選択バイアスなし） | ✅ **実装済み**（2026-10-03, §4.9） |
-| S3 | 手動投入 / 外部アルファ | `stage='manual'` で件数を申告 | 次フェーズ（CLI） |
+| S3 | 手動投入 / 外部アルファ | `stage='manual'` で完全試行一覧から N を検算し、証拠の SHA-256 と共に登録 | ✅ **実装済み**（§4.10、独立 CLI） |
 | 読み出し | 昇格 Bridge → `DsrGate.check(n_trials=N, sr_variance=V)` | snapshot を audit に記録 | 次フェーズ |
 
 本 ADR のスコープは **台帳の型・純関数・スキーマ・DB ブリッジ** まで。既存の探索・評価経路には一切触れない（R7）。
@@ -177,6 +177,61 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
   - 実 PG では、FROST 書き込みが失敗したケースでも台帳が記録されることを確認した。
 - 決定（SELECTED 等）には一切影響しない。台帳の有無で決定が同一であることをテストで固定した。
 
+### 4.10 S3 手動・外部アルファ登録
+
+`scripts/postgres/register_manual_trials.py` は既存の探索・DSR・FROST・昇格判定を呼ばず、変更もしない。
+利用手順・証拠 JSON は [S3 runbook](../runbooks/manual_trial_ledger.md) を参照。
+
+- 完全一覧（棄却・未保存の候補も含む）を必須とし、空白正規化した異なる式数が証拠内・CLI の N と一致しなければ拒否する。
+- `stage='manual'`、`source_type='manual'|'external'`、SR 統計なしで既存台帳へ追記する。
+- 証拠の原バイト SHA-256 と、正規化した一覧の SHA-256 を batch metadata と新規の append-only receipt に保存する。
+  一覧ハッシュ v2 は family と試行行（式・評価時刻・データ締切）の集合を対象とし、提出全体の完了時刻は除外する。
+  完了時刻や ID だけを変えた同じ試行の再登録を許さない。完了時刻は原証拠・metadata・receipt には保持する。
+  旧ハッシュの receipt がある family は原証拠の復元・重複監査まで新規登録を拒否し、新旧 CLI は混在させない。
+  一覧全体の一致だけでは部分重複を検出できないため、migration 089でfamily・正規化式・UTC評価/締切時刻の
+  評価行ハッシュ（version 1）も一意に保存する。部分重複は登録全体を拒否し、Nの自動差引きは行わない。
+  評価レジストリ導入前のv2 receiptも原証拠監査までfamily単位で停止する。自動バックフィルは行わない。
+- `source × research_run_id` を不変の登録識別子とする。完全一致の再実行は冪等、件数・証拠・family の差し替えはエラー。
+  receipt の UNIQUE 制約は、ラベル変更・整形・行並べ替え・同じ行の重複による二重登録も防止する。同時登録も同じ規則となる。
+- batch・receipt・評価レジストリは同じトランザクションで登録し、失敗時は全て取り消す。
+  migration 088は既存batch・edge・receiptのTRUNCATEを拒否し、089の評価レジストリもUPDATE/DELETE/TRUNCATEを拒否する。
+  通常のDMLに対するappend-onlyであり、管理者によるDDL/トリガ無効化を防ぐ権限設計は別途必要。
+- `recorded_at` は DB の `clock_timestamp()`（トランザクション開始時刻ではない）。入力による上書き・遡及登録を許さない。
+  `data_cutoff <= evaluated_at <= completed_at <= DB 登録時刻` を検証する。`as_of < recorded_at` には含めない。
+  ただし登録時刻とコミット時刻の間を as-of とする snapshot はコミット後に変わり得る。壁時計 as-of 単独では
+  当時の可視集合の不変性を保証しない。REPEATABLE READ も新トランザクションでの再現性は保証しない。
+  この制約は実 DB テストで記録し、既存判定計算・読取API契約は変更しない。詳細は
+  [PR #1 追加レビュー](../reports/adr002_s3_pr1_review_2026-10-17.md) を参照。
+- 手動で隠された試行や虚偽の時刻は、SHA-256 だけでは検出できない。`complete=true` は生産者による完全性の宣言であり、
+  上流の探索ログとの照合が必要。実装が保証するのは提出された証拠との整合性・一意性・登録時刻である。
+- S1/S2 で登録済みの評価結果の再梱包には使用しない。S3 後に独立した FROST 評価を実施する場合は S2 がその別評価を計上する。
+  stage/run 横断の N_raw 集計規則（§4.7）は変更しない。
+
+### 4.11 観測したスナップショットの固定保存
+
+独立した `capture_trial_snapshot.py` と migration 087 で、実際に読んだ batch ID 全件・N・
+SR 十分統計量・family・頻度・snapshot_hash を append-only に保存する。
+同じ family / as-of / 頻度 / 祖先設定なら最初の保存結果を返し、保存 ID からも再取得できる。
+payload 全体のハッシュで集計値も検証する。全問合せは同一の REPEATABLE READ 可視性を使い、
+同時保存の競合は新しいトランザクションで再試行する。
+
+これは保存時に観測した入力の再現であり、任意の過去時刻のコミット済み集合の復元ではない。
+既存 live 読取 API の as-of の制約は残る。既存 DSR・FROST・昇格判定への配線は変更しない。
+詳細と利用手順は [固定保存 runbook](../runbooks/trial_snapshot_capture.md)、検証は
+[検証記録](../reports/adr002_snapshot_capture_validation_2026-10-17.md) を参照。
+
+### 4.12 live 読取りの可視性と日時規則
+
+`postgres_lineage_bridge.load_ledger_for_family` は、祖先・edge・batch を単一 SQL で読む。
+READ COMMITTED でも、一つの読取結果に複数のコミット状態を混ぜない。
+direct-only は batch の単一 SELECT とし、edge の参照権限・存在への依存を増やさない。
+SQL の cutoff はコアと同じ UTC 規則（naive datetime は UTC）へ正規化する。
+API の引数・戻り値と caller のトランザクションを維持する。
+
+これは一回の読取整合性であり、同じ壁時計 as-of の将来の再問合せが不変になる保証ではない。
+観測済み結果の再現は §4.11 の固定保存で扱う。
+再現手順と互換性の検証は [live 読取レビュー](../reports/adr002_live_read_consistency_2026-10-17.md) を参照。
+
 ## 5. 実装（本 ADR と同時に追加）
 
 | ファイル | 内容 |
@@ -189,6 +244,14 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 | `analytics/python/alpha/eml/eml_lineage.py` | S1: `EMLDiscoveryOutput` → `TrialBatch` 変換 |
 | `scripts/postgres/run_eml_pipeline.py` | S1: Phase C' で台帳へ追記（`EML_LINEAGE_ENABLED=0` で無効、084 未適用ならスキップ） |
 | `tests/unit/test_adr002_s1_search_stats.py` | S1 テスト（stats_out 有無での出力一致を含む） |
+| `analytics/python/frost/manual_trial_ledger.py` | S3 証拠検証・N 検算・原バイト/正規化 SHA-256 |
+| `analytics/python/pg_io/postgres_manual_trial_bridge.py` | S3 冪等登録・衝突拒否・DB 登録時刻 |
+| `qedschema/migrations/086_qed_manual_trial_imports.sql` | S3 append-only receipt（既存テーブルへの変更なし） |
+| `qedschema/migrations/087_qed_trial_snapshot_captures.sql` | 観測した読取入力の append-only 保存 |
+| `analytics/python/pg_io/postgres_trial_snapshot_capture.py` | 同一可視性での保存・保存 ID による再取得 |
+| `scripts/postgres/capture_trial_snapshot.py` | 独立した監査用 capture / show CLI |
+| `scripts/postgres/register_manual_trials.py` | S3 検証/登録 CLI |
+| `tests/unit/test_adr002_s3_manual_ledger.py` / `tests/integration/test_adr002_s3_manual_pg.py` | S3 単体・実 PostgreSQL テスト |
 
 ## 6. 帰結
 
@@ -221,4 +284,5 @@ EML の二者択一セレクタ `eml(a, b)` は `raw_weight=0 → sigmoid=0.5 �
 - [x] S1: `exhaustive_search` / `gradient_search` が評価総数と fitness 統計を返すよう拡張（2026-09-30）
 - [ ] exhaustive の縮退（§4.7）を Note 登録し、探索設計の見直しを検証サイクルへ
 - [x] S2: `frost_runner` での FROST 評価候補数の記録（source_type ≠ eml の候補の N）— `frost_run_lineage.py`（2026-10-03）
+- [x] S3: 手動・外部アルファの完全試行一覧 / N / 証拠 SHA-256 登録 CLI（2026-10-17）
 - [x] 昇格 Bridge で `TrialLedger.snapshot()` → `DsrGate.check()` を配線し、snapshot_hash を audit_events へ（2026-10-03, runbook §17）

@@ -531,16 +531,12 @@ def _conn(fetchall_seq=None, rowcount=1):
 
 def _batch_row(b: TrialBatch):
     r = b.to_row()
-    return (r["batch_id"], r["family_key"], r["run_id"], r["trace_id"], r["source_type"],
-            r["stage"], r["n_trials"], r["sr_count"], r["sr_mean"], r["sr_m2"],
-            r["sr_periodicity"], json.dumps(r["family_spec"]), r["metadata"], r["recorded_at"])
+    return ("batch", r, r["sr_mean"], r["sr_m2"], r["recorded_at"])
 
 
 def _edge_row(e: LineageEdge):
     r = e.to_row()
-    return (r["edge_id"], r["parent_family_key"], r["child_family_key"],
-            r["parent_formula_hash"], r["child_formula_hash"], r["relation"],
-            r["run_id"], r["metadata"], r["recorded_at"])
+    return ("edge", r, None, None, r["recorded_at"])
 
 
 class TestBridgeWrite:
@@ -587,13 +583,13 @@ class TestBridgeRead:
     def test_load_with_ancestors(self):
         ba, bb = _batch(fam=FAM_A, run="a", n=100), _batch(fam=FAM_B, run="b", n=10)
         e = LineageEdge.create(FAM_A, FAM_B, "mutation", recorded_at=T0)
-        conn, cur = _conn(fetchall_seq=[[(FAM_B,), (FAM_A,)], [_edge_row(e)],
-                                        [_batch_row(ba), _batch_row(bb)]])
+        conn, cur = _conn(fetchall_seq=[[_edge_row(e), _batch_row(ba), _batch_row(bb)]])
         led = load_ledger_for_family(conn, FAM_B)
         assert len(led.batches) == 2 and len(led.edges) == 1
         assert led.snapshot(FAM_B).n_trials == 110
         first_sql = cur.execute.call_args_list[0][0][0]
         assert "WITH RECURSIVE" in first_sql
+        assert cur.execute.call_count == 1
 
     def test_load_without_ancestors(self):
         conn, cur = _conn(fetchall_seq=[[_batch_row(_batch(n=7))]])
@@ -611,24 +607,24 @@ class TestBridgeRead:
     def test_fetch_snapshot_as_of(self):
         b1 = _batch(run="r1", n=5, at=T0)
         b2 = _batch(run="r2", n=50, at=T0 + timedelta(days=3))
-        conn, cur = _conn(fetchall_seq=[[(FAM_A,)], [], [_batch_row(b1), _batch_row(b2)]])
+        conn, cur = _conn(fetchall_seq=[[_batch_row(b1), _batch_row(b2)]])
         snap = fetch_trial_snapshot(conn, FAM_A, as_of=T0 + timedelta(days=1))
         assert snap.n_trials == 5
-        assert cur.execute.call_args_list[0][0][1][1] == T0 + timedelta(days=1)
+        assert cur.execute.call_args_list[0][0][1]["as_of"] == T0 + timedelta(days=1)
 
     def test_bytes_text_columns(self):
         """SQL_ASCII DB では TEXT が bytes で返る → 防御的にデコード"""
         e = LineageEdge.create(FAM_A, FAM_B, "retrain", recorded_at=T0)
         b = _batch(fam=FAM_A, n=3)
         enc = lambda row: tuple(v.encode() if isinstance(v, str) else v for v in row)
-        conn, _ = _conn(fetchall_seq=[[(FAM_B.encode(),)], [enc(_edge_row(e))], [enc(_batch_row(b))]])
+        conn, _ = _conn(fetchall_seq=[[enc(_edge_row(e)), enc(_batch_row(b))]])
         led = load_ledger_for_family(conn, FAM_B)
         assert led.edges[0].relation == "retrain"
         assert led.snapshot(FAM_B).n_trials == 3
 
     def test_bad_jsonb_type(self):
         row = list(_batch_row(_batch()))
-        row[12] = 123
+        row[1]["metadata"] = 123
         conn, _ = _conn(fetchall_seq=[[tuple(row)]])
         with pytest.raises(ValueError):
             load_ledger_for_family(conn, FAM_A, include_ancestors=False)

@@ -30,6 +30,7 @@ from analytics.python.frost.frost_lineage import (
     TrialBatch,
     TrialLedger,
     TrialSnapshot,
+    _to_utc,
 )
 
 
@@ -134,34 +135,44 @@ def ledger_tables_exist(conn: psycopg.Connection) -> bool:
 # 読み出し
 # ---------------------------------------------------------------------------
 
-# 祖先 family 集合 (循環安全: UNION による重複排除で停止)
-_ANCESTORS_SQL = """
+# One statement gives READ COMMITTED callers one visibility snapshot for the
+# ancestor graph and its batches. UNION makes recursive ancestry cycle-safe.
+_SELECT_LEDGER_SQL = """
     WITH RECURSIVE anc(family_key) AS (
-        SELECT %s::text
+        SELECT %(family_key)s::text
         UNION
         SELECT e.parent_family_key
           FROM qed_lineage_edges e
           JOIN anc a ON e.child_family_key = a.family_key
-         WHERE (%s::timestamptz IS NULL OR e.recorded_at <= %s::timestamptz)
+         WHERE %(include_ancestors)s::boolean
+           AND (%(as_of)s::timestamptz IS NULL OR e.recorded_at <= %(as_of)s::timestamptz)
     )
-    SELECT family_key FROM anc
+    SELECT 'batch'::text AS kind, to_jsonb(b) AS data,
+           b.sr_mean, b.sr_m2, b.recorded_at
+      FROM qed_trial_batches b JOIN anc a ON b.family_key = a.family_key
+    UNION ALL
+    SELECT 'edge'::text, to_jsonb(e), NULL::double precision,
+           NULL::double precision, e.recorded_at
+      FROM qed_lineage_edges e JOIN anc a ON e.child_family_key = a.family_key
+     WHERE %(include_ancestors)s::boolean
 """
 
-_SELECT_EDGES_SQL = """
-    SELECT edge_id, parent_family_key, child_family_key,
-           parent_formula_hash, child_formula_hash, relation,
-           run_id, metadata, recorded_at
-      FROM qed_lineage_edges
-     WHERE child_family_key = ANY(%s)
+# Direct-only callers historically need SELECT on batches alone. Do not make
+# them depend on access to (or even the presence of) the lineage-edge table.
+_SELECT_DIRECT_SQL = """
+    SELECT 'batch'::text AS kind, to_jsonb(b) AS data,
+           b.sr_mean, b.sr_m2, b.recorded_at
+      FROM qed_trial_batches b WHERE b.family_key = %(family_key)s::text
 """
 
-_SELECT_BATCHES_SQL = """
-    SELECT batch_id, family_key, run_id, trace_id, source_type, stage,
-           n_trials, sr_count, sr_mean, sr_m2, sr_periodicity,
-           family_spec, metadata, recorded_at
-      FROM qed_trial_batches
-     WHERE family_key = ANY(%s)
-"""
+_BATCH_FIELDS = (
+    "batch_id", "family_key", "run_id", "trace_id", "source_type", "stage",
+    "n_trials", "sr_count", "sr_mean", "sr_m2", "sr_periodicity", "family_spec", "metadata",
+)
+_EDGE_FIELDS = (
+    "edge_id", "parent_family_key", "child_family_key", "parent_formula_hash",
+    "child_formula_hash", "relation", "run_id", "metadata",
+)
 
 
 def _s(v: Any, default: str = "") -> str:
@@ -232,21 +243,28 @@ def load_ledger_for_family(
 
     as_of による最終的な採否判定は TrialLedger.snapshot() が行う
     (ここでは祖先探索の枝刈りにのみ as_of を用いる)。
+    祖先・edge・batch は単一 SQL の同じ可視性で取得し、呼出し元の
+    トランザクションや分離レベルは変更しない。
+    SQL の as_of も純関数と同じ UTC 規則（naive は UTC）で解釈する。
     """
+    batches: List[TrialBatch] = []
+    edges: List[LineageEdge] = []
     with conn.cursor() as cur:
-        if include_ancestors:
-            cur.execute(_ANCESTORS_SQL, (family_key, as_of, as_of))
-            fams = sorted({_s(r[0]) for r in (cur.fetchall() or [])} | {family_key})
-        else:
-            fams = [family_key]
-
-        edges: List[LineageEdge] = []
-        if include_ancestors:
-            cur.execute(_SELECT_EDGES_SQL, (fams,))
-            edges = [_row_to_edge(r) for r in (cur.fetchall() or [])]
-
-        cur.execute(_SELECT_BATCHES_SQL, (fams,))
-        batches = [_row_to_batch(r) for r in (cur.fetchall() or [])]
+        cur.execute(_SELECT_LEDGER_SQL if include_ancestors else _SELECT_DIRECT_SQL, {
+            "family_key": family_key, "as_of": _to_utc(as_of),
+            "include_ancestors": bool(include_ancestors),
+        })
+        for kind, payload, sr_mean, sr_m2, recorded_at in cur.fetchall() or []:
+            data = dict(_as_dict(payload))
+            if _s(kind) == "batch":
+                # Keep native float8/timestamptz decoding for SR precision and
+                # datetime compatibility instead of round-tripping these via JSON.
+                data.update(sr_mean=sr_mean, sr_m2=sr_m2)
+                batches.append(_row_to_batch(tuple(data[k] for k in _BATCH_FIELDS) + (recorded_at,)))
+            elif _s(kind) == "edge":
+                edges.append(_row_to_edge(tuple(data[k] for k in _EDGE_FIELDS) + (recorded_at,)))
+            else:
+                raise ValueError("invalid ledger row kind")
 
     return TrialLedger(batches=batches, edges=edges)
 
