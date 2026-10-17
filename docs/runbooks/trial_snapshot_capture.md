@@ -20,6 +20,8 @@ family 一覧・頻度フィルタ・snapshot_hash を append-only に保存し�
 
 Python 3、psycopg3、テスト済み PostgreSQL、migration 084 の後に 087 を適用する。
 手動試行登録 CLI を併用する場合は 086 も適用する。既存テーブルの変更はない。
+`cbff751` 以前の Draft で 087 を試用済みの DB も、更新後の 087 を再適用して TRUNCATE 拒否トリガを追加する。
+ファイルは再適用可能で、保存済みデータや ID・ハッシュは変更しない。
 `QED_PG_DSN` は安全な環境設定で指定する。接続文字列をコマンド引数・記録ファイルに埋め込まない。
 保存には新規テーブルへの SELECT / INSERT、台帳への SELECT 権限が必要。
 
@@ -40,6 +42,7 @@ python scripts/postgres/capture_trial_snapshot.py show \
 `capture` は DB に保存する操作。同じ条件での再実行は既存の保存結果を返す。
 `show` は保存済みの値だけを返し、台帳を再集計しない。存在しない ID、必要な migration の不足、
 ハッシュ不一致は非ゼロ終了し、現在の台帳の値に差し替えて成功扱いしない。
+保存テーブルの UPDATE / DELETE / TRUNCATE はトリガで拒否する。
 `--direct-only` は祖先 family を含めない条件。`--sr-periodicity` を省略すると既存読取 API の頻度未指定と同じ集計を保存する。
 頻度指定時の N と SR の扱いも既存 API をそのまま使う。
 
@@ -53,6 +56,7 @@ python scripts/postgres/capture_trial_snapshot.py show \
 
 日時は UTC に正規化する。同じ瞬間を `+09:00` と `Z` で指定しても同じ ID になる。
 祖先設定・頻度フィルタが違う場合は別の保存条件となる。
+SQL_ASCII 接続で TEXT の結果が bytes として返される場合も、ID・ハッシュを文字列に正規化して検証する。
 
 ## Python API とトランザクション
 
@@ -76,3 +80,4 @@ python -m pytest tests/integration/test_trial_snapshot_capture_pg.py
 長時間書込みの commit / rollback、同時初回保存、読取り途中の commit、祖先と頻度フィルタ、
 タイムゾーン、append-only、破損拒否、失敗後の再実行、呼出し元トランザクション保護、CLI を検証する。
 変更前後の結果は [検証記録](../reports/adr002_snapshot_capture_validation_2026-10-17.md) を参照。
+SQL_ASCII と TRUNCATE の追加レビューは [追補](../reports/adr002_snapshot_capture_hardening_2026-10-17.md) に記載。

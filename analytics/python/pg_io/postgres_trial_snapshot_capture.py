@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import psycopg
 
 from analytics.python.frost.frost_lineage import SharpeStats, TrialSnapshot
-from analytics.python.pg_io.postgres_lineage_bridge import fetch_trial_snapshot
+from analytics.python.pg_io.postgres_lineage_bridge import _s, fetch_trial_snapshot
 
 
 def _canonical(value) -> str:
@@ -72,6 +72,9 @@ _SELECT = """
 
 def _decode(row) -> SnapshotCapture:
     capture_id, captured_at, checksum, payload = row
+    # Match the live reader's SQL_ASCII handling: text results may be bytes,
+    # while the JSONB loader has already decoded payload into Python objects.
+    capture_id, checksum = _s(capture_id), _s(checksum)
     if _digest(payload) != checksum:
         raise ValueError("snapshot capture payload checksum mismatch")
     if payload.get("version") != 1:

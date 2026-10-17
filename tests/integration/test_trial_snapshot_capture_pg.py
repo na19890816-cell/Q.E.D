@@ -155,6 +155,36 @@ def test_capture_receipts_are_append_only(conn, family, operation):
     assert captures.get_snapshot_capture(conn, frozen.capture_id).to_dict() == frozen.to_dict()
 
 
+def test_truncate_cannot_remove_saved_history(conn, family):
+    frozen = captures.capture_trial_snapshot(conn, family, T0)
+    with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+        with conn.transaction():
+            conn.execute("TRUNCATE qed_trial_snapshot_captures")
+            # Roll back even on vulnerable versions: this regression must never
+            # commit an unexpected successful TRUNCATE of the test archive.
+            raise AssertionError("TRUNCATE unexpectedly removed saved history")
+    assert captures.get_snapshot_capture(conn, frozen.capture_id).to_dict() == frozen.to_dict()
+
+
+def test_capture_and_replay_accept_sql_ascii_text_results(conn, family):
+    batch = TrialBatch.create(family, "研究-" + uuid.uuid4().hex, "exhaustive", 2,
+                              sharpes=[0.1, 0.3], recorded_at=T0)
+    assert insert_trial_batch(conn, batch)
+    original_encoding = conn.info.parameter_status("client_encoding")
+    conn.execute("SET client_encoding TO SQL_ASCII")
+    try:
+        frozen = captures.capture_trial_snapshot(conn, family, T0)
+        replay = captures.get_snapshot_capture(conn, frozen.capture_id)
+        repeated = captures.capture_trial_snapshot(conn, family, T0)
+        assert frozen.snapshot.n_trials == 2
+        assert frozen.snapshot.batch_ids == (batch.batch_id,)
+        assert isinstance(frozen.capture_id, str) and isinstance(frozen.payload_sha256, str)
+        assert frozen.to_dict() == replay.to_dict() == repeated.to_dict()
+        assert json.loads(json.dumps(replay.to_dict()))["capture_id"] == frozen.capture_id
+    finally:
+        conn.execute("SELECT set_config('client_encoding',%s,false)", (original_encoding,))
+
+
 def test_missing_capture_never_falls_back_to_live_ledger(conn):
     capture_id = "capture:" + hashlib.sha256(uuid.uuid4().bytes).hexdigest()
     with pytest.raises(LookupError, match="not found"):

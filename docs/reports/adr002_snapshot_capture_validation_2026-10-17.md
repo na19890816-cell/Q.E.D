@@ -1,5 +1,8 @@
 # ADR-002 固定スナップショット保存の検証 — 2026-10-17
 
+以下は `cbff751` 時点の初期検証。後続の [追加レビュー](adr002_snapshot_capture_hardening_2026-10-17.md)
+で SQL_ASCII 接続時の誤ったハッシュ不一致と TRUNCATE による履歴削除を再現・修正した。
+
 変更前は PR #1 の `336045c`。main は `a3e6390` のまま変更・マージしない。
 Python 3.12.14 / PostgreSQL 17.11 / pytest 9.1.1 / psycopg 3.3.6、ローカルのテスト専用 DB で検証。
 

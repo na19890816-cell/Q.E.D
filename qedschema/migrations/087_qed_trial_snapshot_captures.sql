@@ -12,5 +12,10 @@ CREATE TRIGGER trg_qed_snapshot_captures_append_only
     BEFORE UPDATE OR DELETE ON qed_trial_snapshot_captures
     FOR EACH ROW EXECUTE FUNCTION qed_ledger_reject_mutation();
 
+DROP TRIGGER IF EXISTS trg_qed_snapshot_captures_no_truncate ON qed_trial_snapshot_captures;
+CREATE TRIGGER trg_qed_snapshot_captures_no_truncate
+    BEFORE TRUNCATE ON qed_trial_snapshot_captures
+    FOR EACH STATEMENT EXECUTE FUNCTION qed_ledger_reject_mutation();
+
 INSERT INTO _migrations(filename) VALUES ('087_qed_trial_snapshot_captures.sql')
     ON CONFLICT (filename) DO NOTHING;
