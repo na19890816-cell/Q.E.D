@@ -36,6 +36,7 @@ from .eml_tree import (
     snap_weights,
     copy_tree,
 )
+from analytics.python.audit.exploration_events import AuditError, evidence_hash
 
 
 # ------------------------------------------------------------------ #
@@ -132,6 +133,7 @@ def exhaustive_search(
     fitness_fn: FitnessFunc,
     top_k: int = 20,
     stats_out: Optional[list] = None,
+    audit=None,
 ) -> List[EMLCandidate]:
     """
     depth <= max_depth の全 EML 木を列挙し、上位 top_k を返す。
@@ -140,27 +142,50 @@ def exhaustive_search(
     stats_out が与えられた場合、SearchStats を 1 件追記する (ADR-002)。
     """
     max_depth = min(max(max_depth, EML_DEPTH_MIN), EML_DEPTH_MAX)
+    scope = None
+    if audit is not None:
+        audit.require_run(run_id)
+        scope = audit.start_scope("eml_exhaustive", {"terminals": terminals, "max_depth": max_depth,
+                                                    "top_k": top_k, "fitness_kind": "caller_supplied"})
     trees = enumerate_trees(max_depth, terminals)
 
     candidates: List[EMLCandidate] = []
     n_invalid = 0
     n_failed = 0
-    for tree in trees:
+    for index, tree in enumerate(trees):
+        trial = f"{scope}/{index}"
+        if audit is not None:
+            from analytics.python.audit.exploration_events import audit_value
+            audit.start_trial(scope, trial, evidence={"tree": audit_value(tree), "tree_sha256": evidence_hash(tree), "index": index},
+                              counting_owner="ADR002_S1", n_raw_role="distinct_final_expression_per_stage_run")
         try:
             validate_depth(tree, label="exhaustive_search")
         except ValueError:
             n_invalid += 1
+            if audit is not None:
+                audit.finish_trial(trial, status="INVALID", result={"reason": "DEPTH_VALIDATION"})
             continue
 
         expr = compile_to_expr(snap_weights(tree))
+        if audit is not None:
+            audit.note("EVALUATION_STARTED", {"trial_id": trial, "kind": "final", "formula_key": expr})
+        error_type = None
         try:
             score = fitness_fn(tree, feature_df, target)
-        except Exception:
+        except Exception as exc:
+            if audit is not None and isinstance(exc, AuditError):
+                raise
+            error_type = type(exc).__name__
             score = _FITNESS_FAIL
         if score == _FITNESS_FAIL:
             n_failed += 1
 
         cid = str(uuid.uuid4())
+        if audit is not None:
+            audit.finish_trial(trial, status="FAILED" if score == _FITNESS_FAIL else
+                               "NONFINITE" if not math.isfinite(score) else "SUCCEEDED",
+                               result={"candidate_id": cid, "fitness": score, "error_type": error_type},
+                               formula_key=expr)
         candidates.append(
             EMLCandidate(
                 candidate_id=cid,
@@ -176,6 +201,15 @@ def exhaustive_search(
     # 上位 top_k
     candidates.sort(key=lambda c: c.fitness_score, reverse=True)
     result = candidates[:top_k]
+    if audit is not None:
+        returned = {c.candidate_id for c in result}
+        for c in candidates:
+            audit.note("CANDIDATE_DISPOSITION", {"scope_id": scope, "candidate_id": c.candidate_id,
+                                                "returned_after_top_k": c.candidate_id in returned})
+        audit.finish_scope(scope, {"n_generated": len(trees), "n_evaluated": len(candidates),
+                                  "n_invalid": n_invalid, "n_fitness_failed": n_failed,
+                                  "n_fitness_nonfinite": _n_nonfinite([c.fitness_score for c in candidates]),
+                                  "n_returned": len(result), "n_distinct_expr": len({c.compiled_expr for c in candidates})})
 
     if stats_out is not None:
         fc, fm, fm2 = _fitness_moments([c.fitness_score for c in candidates])
@@ -210,6 +244,7 @@ def gradient_search(
     top_k: int = 10,
     rng_seed: Optional[int] = None,
     stats_out: Optional[list] = None,
+    audit=None,
 ) -> List[EMLCandidate]:
     """
     勾配ベース探索 (Adam soft-training + temperature annealing + snap)。
@@ -229,13 +264,43 @@ def gradient_search(
     n_invalid = 0
     n_failed = 0
     fitness_evals = 0
+    scope = None
+    if audit is not None:
+        audit.require_run(run_id)
+        scope = audit.start_scope("eml_gradient", {"terminals": terminals, "max_depth": max_depth,
+                                "n_init": n_init, "adam_steps": adam_steps, "lr": lr,
+                                "temperature_start": temperature_start, "temperature_end": temperature_end,
+                                "top_k": top_k, "rng_seed": rng_seed, "fitness_kind": "caller_supplied"})
 
     for i in range(n_init):
+        trial = f"{scope}/{i}"
+        if audit is not None:
+            audit.start_trial(scope, trial, evidence={"init_index": i}, counting_owner="ADR002_S1",
+                              n_raw_role="distinct_final_expression_per_stage_run")
         tree = random_tree(max_depth, terminals, rng=rng)
+        observed_fitness = fitness_fn
+        if audit is not None:
+            from analytics.python.audit.exploration_events import audit_value
+            audit.note("CANDIDATE_GENERATED", {"trial_id": trial, "tree": audit_value(tree), "tree_sha256": evidence_hash(tree)})
+            probe = [0]
+
+            def observed_fitness(node, features, targets):
+                probe[0] += 1
+                key = {"trial_id": trial, "kind": "optimizer_probe", "probe_index": probe[0],
+                       "tree": audit_value(node), "tree_sha256": evidence_hash(node), "counts_as_independent_trial": False}
+                audit.note("EVALUATION_STARTED", key)
+                try:
+                    score = fitness_fn(node, features, targets)
+                except BaseException as exc:
+                    audit.note("EVALUATION_FINISHED", {**key, "status": "FAILED", "error_type": type(exc).__name__})
+                    raise
+                audit.note("EVALUATION_FINISHED", {**key, "fitness": score})
+                return score
         trained = _adam_train(
-            tree, feature_df, target, fitness_fn,
+            tree, feature_df, target, observed_fitness,
             steps=adam_steps, lr=lr,
             temp_start=temperature_start, temp_end=temperature_end,
+            **({"audit_enabled": True} if audit is not None else {}),
         )
         snapped = snap_weights(trained)
         # Adam: steps × (EML ノード数) × 2 回の有限差分評価
@@ -245,18 +310,32 @@ def gradient_search(
             validate_depth(snapped, label=f"gradient_search init={i}")
         except ValueError:
             n_invalid += 1
+            if audit is not None:
+                audit.finish_trial(trial, status="INVALID", result={"reason": "DEPTH_VALIDATION"})
             continue
 
         expr = compile_to_expr(snapped)
+        if audit is not None:
+            audit.note("EVALUATION_STARTED", {"trial_id": trial, "kind": "final", "formula_key": expr,
+                                               "snapped_tree": audit_value(snapped)})
+        error_type = None
         try:
             score = fitness_fn(snapped, feature_df, target)
-        except Exception:
+        except Exception as exc:
+            if audit is not None and isinstance(exc, AuditError):
+                raise
+            error_type = type(exc).__name__
             score = _FITNESS_FAIL
         fitness_evals += 1
         if score == _FITNESS_FAIL:
             n_failed += 1
 
         cid = str(uuid.uuid4())
+        if audit is not None:
+            audit.finish_trial(trial, status="FAILED" if score == _FITNESS_FAIL else
+                               "NONFINITE" if not math.isfinite(score) else "SUCCEEDED",
+                               result={"candidate_id": cid, "fitness": score, "error_type": error_type,
+                                       "optimizer_probe_count": probe[0]}, formula_key=expr)
         candidates.append(
             EMLCandidate(
                 candidate_id=cid,
@@ -271,6 +350,15 @@ def gradient_search(
 
     candidates.sort(key=lambda c: c.fitness_score, reverse=True)
     result = candidates[:top_k]
+    if audit is not None:
+        returned = {c.candidate_id for c in result}
+        for c in candidates:
+            audit.note("CANDIDATE_DISPOSITION", {"scope_id": scope, "candidate_id": c.candidate_id,
+                                                "returned_after_top_k": c.candidate_id in returned})
+        audit.finish_scope(scope, {"n_generated": n_init, "n_evaluated": len(candidates),
+                                  "n_invalid": n_invalid, "n_fitness_failed": n_failed,
+                                  "n_fitness_nonfinite": _n_nonfinite([c.fitness_score for c in candidates]),
+                                  "n_returned": len(result), "n_distinct_expr": len({c.compiled_expr for c in candidates})})
 
     if stats_out is not None:
         fc, fm, fm2 = _fitness_moments([c.fitness_score for c in candidates])
@@ -301,6 +389,7 @@ def _adam_train(
     beta1: float = 0.9,
     beta2: float = 0.999,
     eps: float = 1e-8,
+    audit_enabled: bool = False,
 ) -> EMLNode:
     """
     EML 木の raw_weight を Adam で更新。
@@ -325,10 +414,10 @@ def _adam_train(
             orig = n.raw_weight
             # f(w + delta)
             n.raw_weight = orig + delta
-            score_p = _safe_fitness(fitness_fn, node, feature_df, target)
+            score_p = _safe_fitness(fitness_fn, node, feature_df, target, audit_enabled=audit_enabled)
             # f(w - delta)
             n.raw_weight = orig - delta
-            score_m = _safe_fitness(fitness_fn, node, feature_df, target)
+            score_m = _safe_fitness(fitness_fn, node, feature_df, target, audit_enabled=audit_enabled)
             # 勾配: 最大化方向
             grad = (score_p - score_m) / (2 * delta)
 
@@ -361,8 +450,11 @@ def _safe_fitness(
     node: EMLNode,
     feature_df: pd.DataFrame,
     target: pd.Series,
+    audit_enabled: bool = False,
 ) -> float:
     try:
         return float(fn(node, feature_df, target))
-    except Exception:
+    except Exception as exc:
+        if audit_enabled and isinstance(exc, AuditError):
+            raise
         return -999.0

@@ -1,0 +1,29 @@
+{
+  "baseline-no-db": {
+    "passed": 1606,
+    "failed": 3,
+    "skipped": 70,
+    "failure_ids": [
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+    ]
+  },
+  "after-release-no-db": {
+    "passed": 1689,
+    "failed": 3,
+    "skipped": 70,
+    "failure_ids": [
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+    ]
+  },
+  "targeted-release": {
+    "passed": 197,
+    "failed": 0,
+    "skipped": 0,
+    "failure_ids": []
+  },
+  "failure_ids_equal": true
+}
