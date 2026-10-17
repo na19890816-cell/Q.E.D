@@ -497,66 +497,38 @@ class TestFrostWriterImport(unittest.TestCase):
     """
     postgres_frost_writer が base_writer のユーティリティを参照していることを確認。
 
-    Note: frost/__init__.py → frost_runner → postgres_frost_writer の循環 import
-    を回避するため、importlib でモジュール単体をロードして確認する。
+    frost package の通常初期化を先に完了し、writer 単体の初回 import の循環を避ける。
+    実ロード元も検証し、別 checkout の import cache による偽陽性を防ぐ。
     """
 
     def _load_frost_writer(self):
-        """循環 import を回避して frost_writer モジュールを取得する。"""
-        import importlib.util, sys
-        mod_name = "analytics.python.io.postgres_frost_writer"
-        if mod_name in sys.modules:
-            return sys.modules[mod_name]
-        spec = importlib.util.spec_from_file_location(
-            mod_name,
-            "/home/user/prostock/analytics/python/io/postgres_frost_writer.py",
+        """cwd に依存せず、検査対象 checkout の実モジュールを取得する。"""
+        import importlib
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        importlib.import_module("analytics.python.frost")
+        writer = importlib.import_module("analytics.python.io.postgres_frost_writer")
+        base = importlib.import_module("analytics.python.pg_io.base_writer")
+        self.assertEqual(
+            Path(writer.__file__).resolve(),
+            root / "analytics/python/io/postgres_frost_writer.py",
         )
-        mod = importlib.util.module_from_spec(spec)
-        # frost_contracts の循環を避けるため sys.modules に先行登録してからロード
-        sys.modules[mod_name] = mod
-        try:
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        except Exception:
-            del sys.modules[mod_name]
-            raise
-        return mod
+        self.assertEqual(
+            Path(base.__file__).resolve(),
+            root / "analytics/python/pg_io/base_writer.py",
+        )
+        return writer
 
     def test_module_imports_safe_float(self):
         """_safe_float が base_writer.safe_float と同一オブジェクトである。"""
-        # ソースファイルを直接解析して import 文を確認
-        import ast
-        src = open("/home/user/prostock/analytics/python/io/postgres_frost_writer.py").read()
-        tree = ast.parse(src)
-        found = False
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.ImportFrom, ast.Import)):
-                s = ast.unparse(node)
-                if "safe_float" in s and "base_writer" in s:
-                    found = True
-                    break
-        self.assertTrue(found, "postgres_frost_writer が base_writer から safe_float を import していない")
+        self.assertIs(self._load_frost_writer()._safe_float, safe_float)
 
     def test_module_imports_safe_float_opt(self):
-        import ast
-        src = open("/home/user/prostock/analytics/python/io/postgres_frost_writer.py").read()
-        tree = ast.parse(src)
-        found = any(
-            "safe_float_opt" in ast.unparse(n) and "base_writer" in ast.unparse(n)
-            for n in ast.walk(tree)
-            if isinstance(n, (ast.ImportFrom, ast.Import))
-        )
-        self.assertTrue(found)
+        self.assertIs(self._load_frost_writer()._safe_float_opt, safe_float_opt)
 
     def test_module_imports_safe_json(self):
-        import ast
-        src = open("/home/user/prostock/analytics/python/io/postgres_frost_writer.py").read()
-        tree = ast.parse(src)
-        found = any(
-            "safe_json" in ast.unparse(n) and "base_writer" in ast.unparse(n)
-            for n in ast.walk(tree)
-            if isinstance(n, (ast.ImportFrom, ast.Import))
-        )
-        self.assertTrue(found)
+        self.assertIs(self._load_frost_writer()._safe_json, safe_json)
 
     def test_safe_float_nan_zero(self):
         """base_writer.safe_float 自体で NaN→0.0 を確認 (frost_writer 移行後も同じ動作)。"""
