@@ -7,6 +7,8 @@ Event Study Pipeline の結合テスト（実 PostgreSQL を使用）
   - QED_PG_DSN に接続可能な PostgreSQL が必要
   - マイグレーション 015-021 が適用済みであること
   - 環境変数 QED_PG_DSN が設定されていること
+  - parent_app_integration の7件は親アプリの実schema・正式fixtureが必要
+    (docs/runbooks/test_database_setup.md)。Q.E.D単独migration用stubでは代用しない。
 
 スキップ条件:
   - QED_PG_DSN が未設定 or PostgreSQL に接続できない場合は SKIP
@@ -209,6 +211,7 @@ class TestPhaseAAudit:
 # Phase B: experiment_report bridge
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parent_app_integration
 class TestPhaseBExperimentReport:
     def _setup_run(self, conn, unique_batch):
         from pg_io.postgres_event_study_writer import EventStudyWriter
@@ -264,6 +267,7 @@ class TestPhaseBExperimentReport:
 # Phase C: knowledge_artifact bridge
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parent_app_integration
 class TestPhaseCKnowledgeArtifact:
     def _setup_phases_ab(self, conn, unique_batch):
         from pg_io.postgres_event_study_writer import EventStudyWriter
@@ -328,6 +332,7 @@ class TestPhaseCKnowledgeArtifact:
 # Phase D: target resolution — unresolved / resolved ケース
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parent_app_integration
 class TestPhaseDTargetResolution:
     def _run_phases_abc(self, conn, unique_batch, candidate_code=None):
         from pg_io.postgres_event_study_writer import EventStudyWriter
@@ -384,8 +389,7 @@ class TestPhaseDTargetResolution:
                 cur.execute("SELECT name FROM factor_candidates WHERE status != 'deprecated' LIMIT 1")
                 row = cur.fetchone()
 
-        if row is None:
-            pytest.skip("factor_candidates に有効なレコードがない")
+        assert row is not None, "実結合fixtureに有効なfactor_candidateが必要（未検証をSKIPで隠さない）"
 
         valid_code = row[0]
         artifact_id, _ = self._run_phases_abc(conn, unique_batch, candidate_code=valid_code)
@@ -402,6 +406,7 @@ class TestPhaseDTargetResolution:
 # UPSERT 重複防止テスト (acceptance criteria 7)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parent_app_integration
 class TestUpsertNoDuplicates:
     def test_full_pipeline_rerun_no_duplicates(self, conn, unique_batch):
         """
