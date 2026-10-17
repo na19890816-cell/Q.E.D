@@ -17,6 +17,7 @@ from analytics.python.frost.frost_lineage import (
 
 
 INVENTORY_HASH_VERSION = 2
+EVALUATION_HASH_VERSION = 1
 
 
 def _text(value: Any, name: str) -> str:
@@ -58,6 +59,7 @@ class ManualTrialSubmission:
     inventory_sha256: str
     completed_at: datetime
     submitted_by: str
+    evaluation_sha256s: tuple[str, ...]
 
 
 def parse_manual_evidence(
@@ -117,16 +119,24 @@ def parse_manual_evidence(
                            sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     raw_hash = hashlib.sha256(evidence).hexdigest()
     inventory_hash = hashlib.sha256(canonical.encode()).hexdigest()
+    # Row identities also reject overlapping inventories, not just exact copies
+    # of an entire list. An independent reevaluation has a different evaluated_at.
+    evaluation_hashes = tuple(sorted(hashlib.sha256(json.dumps(
+        {"evaluation_hash_version": EVALUATION_HASH_VERSION, "family_key": family,
+         "trial": json.loads(row)}, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=True).encode()).hexdigest() for row in unique_rows))
     identity = json.dumps([source, run_id], separators=(",", ":"), ensure_ascii=True)
     batch = TrialBatch.create(
         family, "manual:" + hashlib.sha256(identity.encode()).hexdigest(), "manual", actual_n,
         source_type=doc["source_type"], family_spec=family_spec_dict(**spec),
         metadata={"manual_ledger_version": 1, "source": source, "research_run_id": run_id,
                   "inventory_hash_version": INVENTORY_HASH_VERSION,
+                  "evaluation_hash_version": EVALUATION_HASH_VERSION,
+                  "evaluation_rows": len(evaluation_hashes),
                   "evidence_sha256": raw_hash, "inventory_sha256": inventory_hash,
                   "submitted_by": submitted_by, "complete": True,
                   "completed_at": completed.isoformat(), "inventory_rows": len(inventory)},
     )
     # No SR statistics: external evidence is not guaranteed to be selection-free.
     return ManualTrialSubmission(batch, source, run_id, raw_hash, inventory_hash,
-                                 completed, submitted_by)
+                                 completed, submitted_by, evaluation_hashes)

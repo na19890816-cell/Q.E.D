@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -75,11 +76,46 @@ def _decode(row) -> SnapshotCapture:
     # Match the live reader's SQL_ASCII handling: text results may be bytes,
     # while the JSONB loader has already decoded payload into Python objects.
     capture_id, checksum = _s(capture_id), _s(checksum)
-    if _digest(payload) != checksum:
+    try:
+        digest = _digest(payload)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("snapshot capture payload is not finite JSON") from exc
+    if digest != checksum:
         raise ValueError("snapshot capture payload checksum mismatch")
-    if payload.get("version") != 1:
+    _require_fields(payload, {"version", "include_ancestors", "snapshot"}, "payload")
+    if type(payload["version"]) is not int or payload["version"] != 1:
         raise ValueError("unsupported snapshot capture version")
     data = payload["snapshot"]
+    _require_fields(data, {"family_key", "as_of", "n_trials", "sr_stats", "sr_variance",
+                          "families", "batch_ids", "batch_count", "sr_periodicity",
+                          "excluded_periodicity_batches", "snapshot_hash"}, "snapshot")
+    _require_fields(data["sr_stats"], {"count", "mean", "m2"}, "sr_stats")
+    for field in ("n_trials", "batch_count", "excluded_periodicity_batches"):
+        _require_nonnegative_int(data[field], field)
+    stats = data["sr_stats"]
+    _require_nonnegative_int(stats["count"], "sr_stats.count")
+    for field in ("mean", "m2"):
+        _require_finite_number(stats[field], "sr_stats." + field)
+    if stats["count"] > data["n_trials"]:
+        raise ValueError("snapshot capture SR count exceeds N")
+    for field in ("families", "batch_ids"):
+        _require_sorted_strings(data[field], field)
+    if any(not re.fullmatch(r"fam:[0-9a-f]{32}", family) for family in data["families"]):
+        raise ValueError("snapshot capture families: invalid family_key")
+    if data["family_key"] not in data["families"]:
+        raise ValueError("snapshot capture families omit target family")
+    if payload["include_ancestors"] is False and data["families"] != [data["family_key"]]:
+        raise ValueError("snapshot capture direct-only context contains ancestors")
+    if data["batch_count"] != len(data["batch_ids"]):
+        raise ValueError("snapshot capture batch count mismatch")
+    if not data["batch_ids"] and data["n_trials"] != 0:
+        raise ValueError("snapshot capture N without batches")
+    if data["excluded_periodicity_batches"] > data["batch_count"]:
+        raise ValueError("snapshot capture excluded count exceeds batch count")
+    if data["sr_periodicity"] is None and data["excluded_periodicity_batches"] != 0:
+        raise ValueError("snapshot capture unfiltered context excludes batches")
+    if not isinstance(data["as_of"], str):
+        raise ValueError("snapshot capture as_of: timestamp string required")
     snapshot = TrialSnapshot(
         family_key=data["family_key"], as_of=datetime.fromisoformat(data["as_of"]),
         n_trials=data["n_trials"], sr_stats=SharpeStats(**data["sr_stats"]),
@@ -89,9 +125,37 @@ def _decode(row) -> SnapshotCapture:
     )
     context = capture_context(snapshot.family_key, snapshot.as_of, snapshot.sr_periodicity,
                               payload["include_ancestors"])
-    if _capture_id(context) != capture_id or _payload(snapshot, payload["include_ancestors"]) != payload:
+    # Python equality treats True == 1 and 1.0 == 1. Compare canonical bytes so
+    # the emitted payload has exactly the representation bound by its checksum.
+    if (data["as_of"] != context["as_of"] or _capture_id(context) != capture_id
+            or _canonical(_payload(snapshot, payload["include_ancestors"])) != _canonical(payload)):
         raise ValueError("snapshot capture context or aggregate mismatch")
     return SnapshotCapture(capture_id, captured_at, checksum, payload["include_ancestors"], snapshot)
+
+
+def _require_fields(value, fields: set[str], name: str) -> None:
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError(f"snapshot capture {name}: unexpected or missing fields")
+
+
+def _require_nonnegative_int(value, name: str) -> None:
+    if type(value) is not int or value < 0:
+        raise ValueError(f"snapshot capture {name}: nonnegative integer required")
+
+
+def _require_finite_number(value, name: str) -> None:
+    try:
+        valid = type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise ValueError(f"snapshot capture {name}: finite number required")
+
+
+def _require_sorted_strings(value, name: str) -> None:
+    if (not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value)
+            or value != sorted(set(value))):
+        raise ValueError(f"snapshot capture {name}: sorted unique nonempty strings required")
 
 
 def get_snapshot_capture(conn: psycopg.Connection, capture_id: str) -> SnapshotCapture:

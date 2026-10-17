@@ -15,7 +15,7 @@ import uuid
 import pytest
 import psycopg
 
-from analytics.python.frost.frost_lineage import LineageEdge, TrialBatch, make_family_key
+from analytics.python.frost.frost_lineage import LineageEdge, SharpeStats, TrialBatch, TrialSnapshot, make_family_key
 from analytics.python.pg_io.postgres_lineage_bridge import (
     fetch_trial_snapshot, insert_lineage_edge, insert_trial_batch,
 )
@@ -36,7 +36,7 @@ def conn():
         c.execute("CREATE TABLE IF NOT EXISTS _migrations(filename TEXT PRIMARY KEY)")
         for _ in range(2):
             for name in ("084_qed_trial_ledger.sql", "086_qed_manual_trial_imports.sql",
-                         "087_qed_trial_snapshot_captures.sql"):
+                         "087_qed_trial_snapshot_captures.sql", "089_qed_manual_trial_evaluations.sql"):
                 c.execute((ROOT / "qedschema/migrations" / name).read_text())
         yield c
 
@@ -240,6 +240,43 @@ def test_replay_rejects_corrupted_payload_instead_of_recalculating(conn):
                  "VALUES (%s,%s,'{}')", (capture_id, "0" * 64))
     with pytest.raises(ValueError, match="checksum"):
         captures.get_snapshot_capture(conn, capture_id)
+
+
+@pytest.mark.parametrize("path,value", [
+    (("version",), True), (("version",), 1.0),
+    (("snapshot", "n_trials"), -1), (("snapshot", "n_trials"), True),
+    (("snapshot", "sr_stats", "count"), 3),
+    (("snapshot", "sr_stats", "mean"), True),
+    (("snapshot", "families"), []),
+    (("snapshot", "batch_ids"), ["duplicate", "duplicate"]),
+    (("snapshot", "batch_count"), 1.0),
+    (("snapshot", "excluded_periodicity_batches"), -1),
+])
+def test_replay_rejects_invalid_jsonb_payload_with_correct_checksum(conn, family, path, value):
+    batch = TrialBatch.create(family, uuid.uuid4().hex, "exhaustive", 2,
+                              sharpes=[-0.3, -0.1], recorded_at=T0)
+    assert insert_trial_batch(conn, batch)
+    payload = captures._payload(fetch_trial_snapshot(conn, family, T0), True)
+    target = payload
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    data = payload["snapshot"]
+    if path == ("snapshot", "batch_ids"):
+        data["batch_count"] = len(value)
+        data["snapshot_hash"] = TrialSnapshot(family, T0, 0, SharpeStats(), (), tuple(value), None).snapshot_hash
+    if path == ("snapshot", "sr_stats", "count"):
+        data["sr_variance"] = data["sr_stats"]["m2"] / (value - 1)
+    # Use JSONB's actual loaded representation to compute a genuinely matching
+    # checksum. This tests schema-valid malformed archives, not hash corruption.
+    payload = conn.execute("SELECT %s::jsonb", (json.dumps(payload),)).fetchone()[0]
+    checksum = captures._digest(payload)
+    capture_id = captures._capture_id(captures.capture_context(family, T0))
+    with conn.transaction(force_rollback=True):
+        conn.execute("INSERT INTO qed_trial_snapshot_captures(capture_id,payload_sha256,payload) "
+                     "VALUES (%s,%s,%s::jsonb)", (capture_id, checksum, json.dumps(payload)))
+        with pytest.raises(ValueError):
+            captures.get_snapshot_capture(conn, capture_id)
 
 
 def test_cli_capture_and_show_return_the_same_saved_inputs(conn, family):

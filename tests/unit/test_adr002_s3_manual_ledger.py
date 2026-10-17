@@ -52,6 +52,7 @@ def test_duplicates_of_same_formula_count_once():
     duplicate = parse_manual_evidence(raw(doc), 2, "operator")
     assert duplicate.batch.n_trials == 2
     assert duplicate.inventory_sha256 == original.inventory_sha256
+    assert duplicate.evaluation_sha256s == original.evaluation_sha256s
 
 
 def test_semantic_hash_blocks_relabeling_reordering_and_whitespace():
@@ -79,6 +80,19 @@ def test_inventory_hash_ignores_a_different_completion_time_and_identity():
     assert first.evidence_sha256 != renamed.evidence_sha256
     assert first.batch.batch_id != renamed.batch.batch_id
     assert first.completed_at != renamed.completed_at
+    assert first.evaluation_sha256s == renamed.evaluation_sha256s
+
+
+def test_evaluation_identity_distinguishes_reevaluation_without_changing_n_raw():
+    doc = evidence_doc()
+    first = parse_manual_evidence(raw(doc), 2, "operator")
+    doc["completed_at"] = "2026-01-03T12:00:00Z"
+    doc["trials"][0]["evaluated_at"] = "2026-01-03T11:00:00Z"
+    later = parse_manual_evidence(raw(doc), 2, "operator")
+    assert first.batch.n_trials == later.batch.n_trials == 2
+    assert len(set(first.evaluation_sha256s) & set(later.evaluation_sha256s)) == 1
+    assert first.batch.metadata["evaluation_hash_version"] == 1
+    assert first.batch.metadata["evaluation_rows"] == len(first.evaluation_sha256s) == 2
 
 
 def test_identity_independent_of_n_and_evidence():

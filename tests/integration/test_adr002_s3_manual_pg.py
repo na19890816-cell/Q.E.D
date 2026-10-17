@@ -31,7 +31,8 @@ def conn():
     with psycopg.connect(DSN, autocommit=True) as c:
         c.execute("CREATE TABLE IF NOT EXISTS _migrations(filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now())")
         for _ in range(2):
-            for name in ("084_qed_trial_ledger.sql", "086_qed_manual_trial_imports.sql"):
+            for name in ("084_qed_trial_ledger.sql", "086_qed_manual_trial_imports.sql",
+                         "089_qed_manual_trial_evaluations.sql"):
                 c.execute((ROOT / "qedschema/migrations" / name).read_text())
         yield c
 
@@ -151,7 +152,7 @@ def test_unversioned_submission_is_rejected_without_writes(conn, doc):
     stale = replace(s, batch=replace(s.batch, metadata=metadata))
     with pytest.raises(ValueError, match="unsupported inventory hash version"):
         register_manual_trials(conn, stale)
-    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+    for table in ("qed_trial_batches", "qed_manual_trial_imports", "qed_manual_trial_evaluations"):
         assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
 
 
@@ -211,7 +212,7 @@ def test_caller_rollback_removes_receipt_and_batch(conn, doc):
         with psycopg.connect(DSN) as c:
             register_manual_trials(c, s)
             raise RuntimeError("caller failed")
-    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+    for table in ("qed_trial_batches", "qed_manual_trial_imports", "qed_manual_trial_evaluations"):
         assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s", (s.batch.batch_id,)).fetchone()[0] == 0
     assert register_manual_trials(conn, s).inserted
 
@@ -252,6 +253,8 @@ def test_concurrent_duplicate_registration(conn, doc, mode):
             f"SELECT count(*) FROM {table} WHERE batch_id=ANY(%s)",
             ([submission(d).batch.batch_id for d in docs],),
         ).fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM qed_manual_trial_evaluations WHERE batch_id=ANY(%s)",
+                        ([submission(d).batch.batch_id for d in docs],)).fetchone()[0] == 2
 
 
 def test_cli_write_and_retry(conn, doc, tmp_path):
@@ -262,3 +265,141 @@ def test_cli_write_and_retry(conn, doc, tmp_path):
     for expected in ("inserted", "already_registered"):
         result = subprocess.run(command, text=True, capture_output=True, check=True)
         assert json.loads(result.stdout)["status"] == expected
+
+
+@pytest.mark.parametrize("repack", ["subset", "superset", "replacement", "equivalent_row"])
+def test_repackaged_inventory_cannot_recount_an_existing_evaluation(conn, doc, repack):
+    original = submission(doc)
+    register_manual_trials(conn, original)
+    changed = copy.deepcopy(doc)
+    changed.update(source="other-desk", research_run_id=uuid.uuid4().hex,
+                   completed_at="2026-01-03T12:00:00Z")
+    new_trial = dict(changed["trials"][1], formula="new-evaluation")
+    if repack == "subset":
+        changed["trials"] = changed["trials"][:1]
+        changed["n_trials"] = 1
+    elif repack == "superset":
+        changed["trials"].append(new_trial)
+        changed["n_trials"] = 3
+    else:
+        changed["trials"][1] = new_trial
+        if repack == "equivalent_row":
+            changed["trials"][0].update(formula="r1+r5",
+                evaluated_at="2026-01-02T20:00:00+09:00",
+                data_cutoff="2026-01-01T09:00:00+09:00")
+    duplicate = submission(changed)
+    assert duplicate.inventory_sha256 != original.inventory_sha256
+    with pytest.raises(ManualImportConflict, match="already registered"):
+        register_manual_trials(conn, duplicate)
+    assert fetch_trial_snapshot(conn, original.batch.family_key).n_trials == 2
+    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+        assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s",
+                            (duplicate.batch.batch_id,)).fetchone()[0] == 0
+
+
+def test_concurrent_partially_overlapping_inventories_are_atomic(conn, doc):
+    import psycopg
+    other = copy.deepcopy(doc)
+    other["research_run_id"] += "-other"
+    other["trials"][1]["formula"] = "different-formula"
+    gate = Barrier(2)
+
+    def write(d):
+        with psycopg.connect(DSN) as c:
+            gate.wait(timeout=10)
+            try:
+                return register_manual_trials(c, submission(d)).inserted
+            except ManualImportConflict:
+                return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(write, (doc, other)))
+    assert sorted(map(str, results)) == ["True", "conflict"]
+    assert fetch_trial_snapshot(conn, submission(doc).batch.family_key).n_trials == 2
+    submissions = [submission(d) for d in (doc, other)]
+    ids = [s.batch.batch_id for s in submissions]
+    for table in ("qed_trial_batches", "qed_manual_trial_imports"):
+        assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=ANY(%s)",
+                            (ids,)).fetchone()[0] == 1
+    rows = conn.execute("SELECT evaluation_sha256,batch_id FROM qed_manual_trial_evaluations "
+                        "WHERE batch_id=ANY(%s) ORDER BY evaluation_sha256", (ids,)).fetchall()
+    assert len(rows) == 2 and len({r[1] for r in rows}) == 1
+    winner = next(s for s in submissions if s.batch.batch_id == rows[0][1])
+    assert tuple(r[0] for r in rows) == winner.evaluation_sha256s
+
+
+def test_exact_retry_is_idempotent_with_sql_ascii_text_results(conn, doc):
+    import psycopg
+    s = submission(doc)
+    first = register_manual_trials(conn, s)
+    with psycopg.connect(DSN, autocommit=True,
+                         options="-cclient_encoding=SQL_ASCII") as ascii_conn:
+        repeated = register_manual_trials(ascii_conn, s)
+    assert not repeated.inserted
+    assert repeated.batch_id == first.batch_id and repeated.recorded_at == first.recorded_at
+
+
+def test_v2_receipt_without_evaluation_registry_requires_audit(conn, doc):
+    s = submission(doc)
+    metadata = dict(s.batch.metadata)
+    metadata.pop("evaluation_hash_version", None)
+    metadata.pop("evaluation_rows", None)
+    assert insert_trial_batch(conn, replace(s.batch, metadata=metadata))
+    conn.execute(
+        "INSERT INTO qed_manual_trial_imports "
+        "(source,research_run_id,batch_id,evidence_sha256,inventory_sha256,n_trials,"
+        "completed_at,submitted_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+        (s.source, s.research_run_id, s.batch.batch_id, s.evidence_sha256,
+         s.inventory_sha256, s.batch.n_trials, s.completed_at, s.submitted_by))
+    other = copy.deepcopy(doc)
+    other["research_run_id"] += "-other"
+    other["trials"][0]["formula"] = "new-formula"
+    with pytest.raises(ManualImportConflict, match="audit"):
+        register_manual_trials(conn, submission(other))
+
+
+def test_evaluation_insert_failure_rolls_back_all_registration_rows(conn, doc):
+    import psycopg
+    s = submission(doc)
+    # The deliberate failure occurs after the batch and receipt INSERTs. All
+    # test DDL is rolled back too, even when an assertion fails unexpectedly.
+    with conn.transaction(force_rollback=True):
+        conn.execute("CREATE FUNCTION pg_temp.reject_evaluation_test() RETURNS trigger "
+                     "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'evaluation insert failed'; END $$")
+        conn.execute("CREATE TRIGGER test_reject_evaluation BEFORE INSERT ON qed_manual_trial_evaluations "
+                     "FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_evaluation_test()")
+        with pytest.raises(psycopg.errors.RaiseException, match="evaluation insert failed"):
+            register_manual_trials(conn, s)
+        for table in ("qed_trial_batches", "qed_manual_trial_imports", "qed_manual_trial_evaluations"):
+            assert conn.execute(f"SELECT count(*) FROM {table} WHERE batch_id=%s",
+                                (s.batch.batch_id,)).fetchone()[0] == 0
+    assert register_manual_trials(conn, s).inserted
+
+
+@pytest.mark.parametrize("operation", [
+    "UPDATE qed_manual_trial_evaluations SET evaluation_sha256=evaluation_sha256 WHERE batch_id=%s",
+    "DELETE FROM qed_manual_trial_evaluations WHERE batch_id=%s",
+    "TRUNCATE qed_manual_trial_evaluations",
+])
+def test_evaluation_registry_is_append_only(conn, doc, operation):
+    import psycopg
+    s = submission(doc)
+    register_manual_trials(conn, s)
+    with conn.transaction(force_rollback=True):
+        with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+            conn.execute(operation, (s.batch.batch_id,) if "%s" in operation else None)
+    rows = conn.execute("SELECT evaluation_sha256 FROM qed_manual_trial_evaluations "
+                        "WHERE batch_id=%s ORDER BY evaluation_sha256", (s.batch.batch_id,)).fetchall()
+    assert tuple(r[0] for r in rows) == s.evaluation_sha256s
+
+
+def test_registry_migration_reapplication_preserves_receipts_and_evaluations(conn, doc):
+    s = submission(doc)
+    register_manual_trials(conn, s)
+    before = conn.execute("SELECT evaluation_sha256,batch_id FROM qed_manual_trial_evaluations "
+                          "WHERE batch_id=%s ORDER BY evaluation_sha256", (s.batch.batch_id,)).fetchall()
+    for _ in range(2):
+        conn.execute((ROOT / "qedschema/migrations/089_qed_manual_trial_evaluations.sql").read_text())
+    assert conn.execute("SELECT evaluation_sha256,batch_id FROM qed_manual_trial_evaluations "
+                        "WHERE batch_id=%s ORDER BY evaluation_sha256", (s.batch.batch_id,)).fetchall() == before
+    assert not register_manual_trials(conn, s).inserted

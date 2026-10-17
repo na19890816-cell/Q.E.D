@@ -6,13 +6,16 @@ Any conflict rolls back the entire attempt, never leaving an orphan batch.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
 import psycopg
 
-from analytics.python.frost.manual_trial_ledger import INVENTORY_HASH_VERSION, ManualTrialSubmission
-from analytics.python.pg_io.postgres_lineage_bridge import _INSERT_BATCH_SQL
+from analytics.python.frost.manual_trial_ledger import (
+    EVALUATION_HASH_VERSION, INVENTORY_HASH_VERSION, ManualTrialSubmission,
+)
+from analytics.python.pg_io.postgres_lineage_bridge import _INSERT_BATCH_SQL, _s
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,16 @@ def register_manual_trials(conn: psycopg.Connection, submission: ManualTrialSubm
     batch = submission.batch
     if batch.metadata.get("inventory_hash_version") != INVENTORY_HASH_VERSION:
         raise ValueError("unsupported inventory hash version; revalidate the original evidence")
+    hashes = submission.evaluation_sha256s
+    if (type(batch.metadata.get("evaluation_hash_version")) is not int
+            or batch.metadata["evaluation_hash_version"] != EVALUATION_HASH_VERSION
+            or not isinstance(hashes, tuple) or not hashes
+            or any(not isinstance(h, str) or not re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes)
+            or tuple(sorted(set(hashes))) != hashes
+            or type(batch.metadata.get("evaluation_rows")) is not int
+            or batch.metadata["evaluation_rows"] != len(hashes)
+            or len(hashes) < batch.n_trials):
+        raise ValueError("invalid evaluation inventory; revalidate the original evidence")
     if not conn.autocommit and conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE:
         # psycopg.transaction() on an idle connection commits a top-level
         # transaction. Establish the caller-owned transaction first so that
@@ -56,6 +69,20 @@ def register_manual_trials(conn: psycopg.Connection, submission: ManualTrialSubm
                 )
                 if cur.fetchone():
                     raise ManualImportConflict("legacy inventory hashes require audit before new imports for this family")
+                # Older v2 receipts contain only a whole-list digest. Individual
+                # evaluations cannot be recovered from it or silently backfilled.
+                cur.execute(
+                    "SELECT 1 FROM qed_manual_trial_imports r "
+                    "JOIN qed_trial_batches b ON b.batch_id=r.batch_id "
+                    "WHERE b.family_key=%s AND ("
+                    "b.metadata->>'evaluation_hash_version' IS DISTINCT FROM %s OR "
+                    "b.metadata->'evaluation_rows' IS DISTINCT FROM ("
+                    "SELECT to_jsonb(count(*)) FROM qed_manual_trial_evaluations e "
+                    "WHERE e.batch_id=r.batch_id)) LIMIT 1",
+                    (batch.family_key, str(EVALUATION_HASH_VERSION)),
+                )
+                if cur.fetchone():
+                    raise ManualImportConflict("legacy evaluation inventory requires audit before imports for this family")
                 cur.execute(
                     "SELECT batch_id, evidence_sha256, inventory_sha256, n_trials, recorded_at "
                     "FROM qed_manual_trial_imports WHERE source=%s AND research_run_id=%s",
@@ -63,8 +90,9 @@ def register_manual_trials(conn: psycopg.Connection, submission: ManualTrialSubm
                 )
                 existing = cur.fetchone()
                 if existing:
-                    if existing[:4] != (batch.batch_id, submission.evidence_sha256,
-                                        submission.inventory_sha256, batch.n_trials):
+                    if tuple(_s(v) for v in existing[:3]) + (existing[3],) != (
+                            batch.batch_id, submission.evidence_sha256,
+                            submission.inventory_sha256, batch.n_trials):
                         raise ManualImportConflict("identity already registered with different evidence or N")
                     return ManualImportResult(batch.batch_id, False, existing[4])
                 cur.execute("SELECT clock_timestamp()")
@@ -85,6 +113,12 @@ def register_manual_trials(conn: psycopg.Connection, submission: ManualTrialSubm
                     (submission.source, submission.research_run_id, batch.batch_id,
                      submission.evidence_sha256, submission.inventory_sha256, batch.n_trials,
                      submission.completed_at, recorded_at, submission.submitted_by),
+                )
+                # Sorted identities give overlapping writers the same lock order.
+                # A row conflict rolls back the receipt and batch savepoint too.
+                cur.executemany(
+                    "INSERT INTO qed_manual_trial_evaluations(evaluation_sha256,batch_id) VALUES (%s,%s)",
+                    [(h, batch.batch_id) for h in hashes],
                 )
                 return ManualImportResult(batch.batch_id, True, recorded_at)
     except psycopg.errors.UniqueViolation as exc:
