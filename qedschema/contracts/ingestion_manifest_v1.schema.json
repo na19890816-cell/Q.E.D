@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qed:transport:ingestion-manifest:1",
+  "title": "Q.E.D local audit transport manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["transport_schema_version", "source_system", "transfer_id", "record_contract", "raw_sha256", "size_bytes", "record_count", "expected_observations"],
+  "properties": {
+    "transport_schema_version": {"const": 1, "type": "integer"},
+    "source_system": {"const": "prostock2"},
+    "transfer_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}(?![\\s\\S])"},
+    "record_contract": {"enum": ["prostock2_audit_v1", "legacy_audit_archive_v1"]},
+    "raw_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}(?![\\s\\S])"},
+    "size_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+    "record_count": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "expected_observations": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": true,
+          "items": {"type": "array", "minItems": 7, "maxItems": 7,
+            "items": {"type": "string", "minLength": 1, "maxLength": 128}}}
+      ]
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"record_contract": {"const": "prostock2_audit_v1"}}},
+      "then": {"properties": {"expected_observations": {"type": "array"}}},
+      "else": {"properties": {"expected_observations": {"type": "null"}}}}
+  ]
+}

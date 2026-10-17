@@ -1,0 +1,61 @@
+{
+  "phase": "5R",
+  "task": "C",
+  "baseline_sha": "c92cef13ed01542145c2e97989efce88f9bd64e5",
+  "base_branch": "feat/phase5r-deployment-data-contract",
+  "head_branch": "feat/phase5r-local-ingestion",
+  "target": {
+    "passed": 270,
+    "failed": 0,
+    "skipped": 0,
+    "exit_code": 0,
+    "failure_ids": [],
+    "junit_sha256": "50b4ba39e4480c68563ed0814fb7f790914497ed138783c2f2ee111d7832114c"
+  },
+  "new_tests": {
+    "unit_passed": 92,
+    "synthetic_filesystem_integration_passed": 33,
+    "failed": 0,
+    "skipped": 0
+  },
+  "before": {
+    "passed": 1751,
+    "failed": 3,
+    "skipped": 70,
+    "exit_code": 1,
+    "failure_ids": [
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+    ],
+    "junit_sha256": "8ff545c046e45614e3c1f1974e865ba5897a28063e574ded8e3ea47370f25f7b"
+  },
+  "after": {
+    "passed": 1876,
+    "failed": 3,
+    "skipped": 70,
+    "exit_code": 1,
+    "failure_ids": [
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+      "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+    ],
+    "junit_sha256": "531e3696f1054343fa6ed33a389d017c900f06c349cefd1f689bdf0085abcd1d"
+  },
+  "failure_ids_identical": true,
+  "skip_ids_identical": true,
+  "new_failures": [],
+  "record_v1_unchanged": true,
+  "existing_frost_dsr_pbo_promotion_unchanged": true,
+  "local_posix_only": true,
+  "real_prostock2_files_used": false,
+  "production_connected": false,
+  "parent_schema_integration": "HOLD_NOT_TESTED",
+  "research_eligibility_grant_api": "NOT_IMPLEMENTED_BY_DESIGN",
+  "note008_adoption": "HOLD",
+  "source_artifact_check": "RECEIVED_NONQUARANTINED_LOCAL_RAW_HASH_ONLY",
+  "full_commands": {
+    "before": "PYTHONPATH=/workspace/work/qed-phase5r /workspace/Q.E.D/.venv/bin/python -m pytest -q --junitxml=/workspace/work/qed-phase5r-c-audit/baseline-full.xml",
+    "after": "PYTHONPATH=/workspace/work/qed-phase5r-c /workspace/Q.E.D/.venv/bin/python -m pytest -q --junitxml=/workspace/work/qed-phase5r-c-audit/full.xml"
+  }
+}
