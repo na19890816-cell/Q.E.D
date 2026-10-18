@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qed:artifact:raw-json:1",
+  "title": "Raw JSON artifact manifest v1 (storage only)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contract_id": {
+      "const": "urn:qed:artifact:raw-json:1"
+    },
+    "artifact_schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "source_system": {
+      "const": "prostock2"
+    },
+    "export_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "artifact_kind": {
+      "enum": [
+        "snapshot",
+        "jvram_history",
+        "ovx_history",
+        "regime_history",
+        "other"
+      ]
+    },
+    "serialization": {
+      "const": "single_json_document"
+    },
+    "media_type": {
+      "const": "application/json"
+    },
+    "exported_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "complete": {
+      "const": true
+    },
+    "raw_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216
+    },
+    "artifact_role": {
+      "enum": [
+        "original",
+        "derived"
+      ]
+    },
+    "derived_from": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "raw_sha256",
+          "transformation_code_sha256",
+          "spec_sha256",
+          "settings_sha256"
+        ],
+        "properties": {
+          "raw_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "transformation_code_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "spec_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "settings_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability_evidence_sha256",
+        "available_at",
+        "calendar_version",
+        "code_commit",
+        "code_content_sha256",
+        "historical_captured_at",
+        "logical_record_count",
+        "market_date",
+        "policy_hash",
+        "source_revision",
+        "universe_manifest_sha256"
+      ],
+      "properties": {
+        "availability_evidence_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code_content_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy_hash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "universe_manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "market_date": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "historical_captured_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code_commit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "calendar_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "logical_record_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "provenance_gaps": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+      }
+    }
+  },
+  "required": [
+    "contract_id",
+    "artifact_schema_version",
+    "source_system",
+    "export_id",
+    "artifact_id",
+    "artifact_kind",
+    "serialization",
+    "media_type",
+    "exported_at",
+    "complete",
+    "raw_sha256",
+    "size_bytes",
+    "artifact_role",
+    "derived_from",
+    "provenance",
+    "provenance_gaps"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "artifact_role": {
+            "const": "original"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "derived_from": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "derived_from": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$comment": "Normative semantic validator also enforces actual calendar dates, timestamps <= exported_at, availability evidence, null gap coverage, parent uniqueness by raw hash, and no self-parent. Payload grammar/limits and durable storage are separate checks. Default maximum is a software limit, not production sizing."
+}
