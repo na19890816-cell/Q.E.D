@@ -1,78 +1,88 @@
-# Phase 6B — ProStock2実原本との契約差分
-2026-10-18。正式な実原本/manifest/辞書は未受領。EC2、本番DB、cron、取引へ接続していない。
-本書は利用者提示の所在情報との照合で、実bytesを直接検査した記録ではない。
+# Phase 6B — 実 Exporter 受入条件と raw JSON artifact 提案
 
-## 原本別の受入条件
-| 原本候補 | 取得して確認する事項 |
+2026-10-18。実 EC2・本番 DB・cron・取引系には接続していない。
+本書は利用者が示した所在情報との契約照合であり、実原本の bytes を検証した記録ではない。
+実ファイルも正式 Exporter manifest も未受領のため、実結合は **Hold**。
+
+## 原本の所在と判定可能な範囲
+
+| 提示された原本候補 | 未確定事項／受入条件 |
 |---|---|
-| screen/snapshot_*.json | single JSON/pretty JSON/JSONLの宣言と実bytes。拡張子だけで決めない |
-| candidates_log.jsonl | UTF-8、物理LF、最終LF、duplicate key/NaN/Inf、行長/件数、全候補性 |
-| OVX/JVRAM履歴 | serialization、系列/単位/頻度/改定、公表/計算/利用可能時刻 |
-| 信用残manifest | 本文と対応原本、対象市場/日、観測版、hash定義と完全性 |
-| 日足OHLCV原本 | 未保存。特徴量から原本や原市場hashを復元したと扱わない |
-| 過去code/policy | 未取得。現在HEAD/設定で埋めない |
-| 過去available_at | 一部根拠不完全。mtime/受信時刻/翌営業日で推測しない |
+| `screen/snapshot_*.json` | 単一 JSON document、JSONL、pretty JSON のどれか未確認。拡張子・名前・件数から決めない |
+| `candidates_log.jsonl` | 物理行、末尾 LF、UTF-8、重複 key、NaN/Inf、行長、件数、全候補性を未確認 |
+| OVX・JVRAM 履歴 | 形式、系列定義、単位、改定版、公表／計算／available_at の根拠が未取得 |
+| 信用残 manifest | manifest 本文、対応する原本、対象日、観測版、hash の定義と完全性が未取得 |
+| 日足 OHLCV 原本 | 未保存。特徴量 snapshot から原本や原市場 hash を復元したと扱わない |
+| 過去 code/policy | 未取得。現在版を過去版として代入しない |
+| 過去 availability | 一部不完全。ファイル mtime、受信時刻、翌営業日で補完しない |
 
-91 snapshot/446銘柄は所在情報であり直接確認した観測数・全探索Nではない。
-期待universeは正式な当時のuniverse/calendar/測定集合から独立に固定し、
-446という数やファイルに残った生存候補から作らない。欠落/余剰/重複を保存する。
+91 snapshot／446 銘柄は利用者提示の所在情報で、直接観測した行数や試行数ではない。
+`446 × 日数` を期待 universe、全探索 N、独立観測数へ変換しない。
+regime／candidate を既存 feature に埋め込まない。数値 regime 指標が既存 feature の意味を
+満たすかは正式データ辞書で判断し、カテゴリ・遷移・選抜履歴は専用契約の要否を別レビューする。
 
-## 正式提供後に行う検査
-1. 提供主体、承認、範囲、秘匿性、保持条件を記録する。認証情報を原本/PRへ含めない。
-2. 元bytesを変更せずraw SHA-256とbyte長を計算し、producer完了manifestと照合する。
-3. manifestに宣言したserializationでstrict検査する。single JSONは全体を一文書としてdecodeする。
-   JSONLは各物理行のobject、末尾LF、duplicate key/nonfinite/長さ/件数を検査する。
-4. producer manifest SHAとreceiver receiptのraw SHA/size/契約版/実受信時刻を対応づける。
-5. timestampはtimezone根拠を取得してUTC保存。market_dateの市場/対象日/根拠を別に確認する。
-   filename、UTC日付、日本市場営業日、米国公表日を同一視しない。
-6. 同一日付の複数観測はrevision、実観測時刻、raw SHAで区別する。最新値で上書きしない。
-   revision順序不明は不明として保存する。
-7. 欠損、拒否、時点不適格、未取得を区別する。不明値を0へ補完しない。
-8. 同一原本再送は同じhash/manifestで冪等処理、同一ID別原本は競合として隔離する。
-   部分原本/転送中断/manifest不完全は原本を保持して完全再送を求める。
-9. 原市場bytes、依存、当時のcode/policy、availability根拠が不足すれば保管のみ。
-   ready/保存成功/ACKから研究利用を許可しない。
+## 実原本を受領してから行う検査
 
-single JSONとJSONLの1行objectはbyte grammarが重なることがある。
-構文だけで論理単位を推測せず、producer宣言と正式辞書を優先する。
-合成pretty JSONを現Task Cで隔離し、元bytes不変を確認したが、実snapshot形式の証明にはならない。
+1. 正式提供者・範囲・承認・秘匿性・保持条件を記録し、認証情報を含まない転送経路を指定する。
+2. 変更しない原本 bytes に対して SHA-256 と byte 長を計算し、producer の完了 manifest と照合する。
+3. manifest の宣言した serialization に従って検査する。single JSON は全体を一つの文書として
+   strict decode する。JSONL は物理 LF 境界・最終 LF・各行 object・strict JSON を検査する。
+   行指向 receiver へ単一文書を流して、銘柄レコードを検証済みと呼ばない。
+4. producer manifest SHA と receiver receipt の raw SHA／size／契約版／取得時刻を対応づける。
+   hash 不一致、不完全 manifest、転送中断、同一 ID 別原本は隔離し、完全な同一原本は再送可能とする。
+5. `market_date` は何の市場・対象日かを辞書と原本で確認する。filename、mtime、UTC 日付、
+   日本市場の営業日、米国公表日を同一視しない。全 timestamp は timezone 付き、保存は UTC。
+6. 同一日付の複数観測は source revision／実観測時刻／raw hash を保持し、最新値で上書きしない。
+   revision 順序が不明なら不明のまま保存し、利用可否は Hold。
+7. 正式 universe/calendar から日付×銘柄×測定の期待集合を独立に固定し、欠落・余剰・重複を照合する。
+   446 という数や実ファイルに現れた生存候補だけから期待集合を作らない。
+8. 値の欠損、source 未取得、時点不適格、gate 拒否を区別して保持する。unknown を 0 にしない。
+9. 原市場 bytes、依存 evidence、当時の code/policy、availability の根拠が未解決なら原本保管のみ。
+   保存成功／入力 ready／ACK は研究適格性を付与しない。
 
-## raw JSON artifact契約案 — 未実装
-既存record v1とstrict JSONL transport v1を変更しない。
-single JSON正式提供時は別ID urn:qed:artifact:raw-json:1 を合意し、receiverを別PRで実装する。
-本書の提案を現receiverの対応済み形式と扱わない。
+single JSON と JSONL 1行1object は byte grammar が重なる場合もある。構文だけで意図を推測せず、
+producer manifest の serialization とデータ辞書が一致して初めて論理レコードの単位を決める。
+合成 pretty JSON は現行 Task C で隔離され bytes が変化しないことを probe で確認した。
+これは実 snapshot 形式の証明ではない。
 
-| 提案項目 | 意味 |
+## raw JSON artifact 契約案 — 未実装／受入許可ではない
+
+既存 `prostock2_audit_v1` record と strict JSONL transport v1 は変更しない。
+single JSON 原本が正式に提供される場合は、新しい契約 ID
+`urn:qed:artifact:raw-json:1` を合意してから receiver とテストを別 PR で実装する。
+本 Phase の成果は設計案で、現 receiver がこの形式を受け付けるとの宣言ではない。
+
+| 提案フィールド | 意味／不明時の扱い |
 |---|---|
-| artifact_schema_version | 1、record/transportの版と独立 |
-| artifact_id/export_id/source_system | exportを安定識別。過去research runの代用ではない |
-| serialization/media_type | single_json_document/application/json |
-| raw_sha256/size_bytes | 空白/改行/文字コードを含む原本bytes |
-| artifact_kind | snapshot/candidate-log/regime-history等、研究record_typeとは別 |
-| exported_at | 実export固定時刻。timezone必須、UTC |
-| historical_captured_at/available_at/market_date | 根拠とscope。未知はnullと理由 |
-| source_revision/code_commit/policy_hash | 実際の対応版またはnull。仮値を入れない |
-| universe_manifest_sha256/calendar_version | 正式期待集合/calendar参照またはnull |
-| artifact_role | original/derived |
-| derived_from | derivedには原本SHA、変換code commit、仕様hash、設定hashを必須 |
-| logical_record_count | 辞書未取得ではnull。物理行数を観測数にしない |
-| provenance_gaps | 不足一覧。空でも自己申告だけで研究許可しない |
+| `artifact_schema_version` | integer 1。既存 record/transport 版と独立 |
+| `artifact_id`, `export_id`, `source_system` | 新たな export を安定識別。過去 research run と同一視しない |
+| `serialization` | `single_json_document` 固定。複数文書や JSONL を受け入れない |
+| `media_type` | `application/json`。圧縮するなら別契約と展開前後の制限が必要 |
+| `raw_sha256`, `size_bytes` | 改行・空白・文字コードを含む原本 bytes。受信側で再計算 |
+| `artifact_kind` | snapshot / candidate-log / regime-history 等の分類。研究レコード型ではない |
+| `exported_at` | 実際の export 固定時刻。timezone 必須、UTC。過去 captured_at の代用不可 |
+| `historical_captured_at`, `available_at`, `market_date` | 根拠と scope を別記。未知は null、理由必須 |
+| `source_revision`, `code_commit`, `policy_hash` | 実際の対応版か null。現在版／ゼロ hash で補完しない |
+| `universe_manifest_sha256`, `calendar_version` | 正式な期待集合・calendar の参照か null |
+| `artifact_role` | original / derived を区別 |
+| `derived_from` | derived の場合、原本 raw SHA、変換 code commit、仕様 hash、変換設定 hash が必須 |
+| `logical_record_count` | single document の論理単位は辞書受領前は null。物理行数を件数に代入しない |
+| `provenance_gaps` | 不足を列挙。空配列でも自己申告だけで研究許可しない |
 
-originalを整形/改行追加/JSONL化/数値型変換しない。
-変換物には新artifact ID/hashを付け、原本hashへ結び付ける。
-圧縮、上限、depth、duplicate key、nonfinite、原子保存、receipt/復旧、
-original/derivedの再送と競合を別の仕様・validator・テストで固定する。
+original は変換前 bytes のまま保存する。derived は別 artifact ID と raw SHA を持ち、
+元の hash へ有向に結び付ける。pretty-print、改行追加、数値型変換、JSONL 化は全て派生物。
+同一日・別観測版を一意に保つ natural key と original/derived の再送・競合規則を追加レビューする。
+Task C と同等の容量／depth／重複 key／nonfinite／原子保存／fsync／receipt／復旧の試験が必要。
+この案への無断移行や既存 v1 の enum 拡張は行わない。
 
-regimeカテゴリ/遷移とcandidate選抜履歴はfeatureへ無理に詰め込まない。
-数値regime指標のfeature適合も正式な定義/単位/依存/時点根拠で判断する。
+## Exporter 側の必要改修と次の判定
 
-## Exporter改修
-- 完了後だけraw hash/size/serialization/安定IDを固定し、転送途中fileを公開しない。
-- 当時のuniverse/calendar、code/policy、source revision、availability根拠を保存する。
-- 原本/派生物/依存証拠の保管とhash対応を維持する。
-- receiver durable ACKを認証した経路で照合し、転送ACKと区別する。
-- 未転送/未確認原本を期限だけで削除しない。保持解除は別承認とする。
-- 正式な匿名化標本、データ辞書、manifest、取得範囲を提供して相互検証する。
+- 完了後にのみ原本 hash・byte 長・serialization・安定 export ID を固定し、転送中ファイルを公開しない。
+- 原本と派生物の保存先・保持期限・hash 対応を分け、未転送／未確認原本を期限だけで削除しない。
+- timezone、market_date、観測版、availability 根拠、辞書／universe／calendar を提供する。
+- code/policy と原市場依存を将来の実行開始から保存し、過去不明値は復元したと主張しない。
+- 正式 receiver durable ACK を再照合してから、保持・backup policy と承認に基づき削除を別判断する。
+- snapshot／候補／regime／信用残の匿名化標本と公式 manifest を、正式な提供・承認後に相互検証する。
 
-実bytes/manifest/期待集合/時刻根拠待ちで実受入はHold。
-OHLCV、全探索N、cost後returnsが揃うまでNOTE-008採用評価と新Hard GateはHold。
+Go は受入条件の設計まで。実 bytes、辞書、manifest、期待集合、時刻根拠の未取得により実受入は Hold。
+OHLCV、全探索 N、cost 後 returns が揃うまで NOTE-008 採用評価・新 Hard Gate は Hold。

@@ -1,9 +1,9 @@
 {
   "phase": 6,
   "date_utc": "2026-10-18",
-  "baseline_main": "a3e63907c2f529f289101698ee7d62f8bf72f436",
-  "pr_heads_file": "phase6_pr_heads_2026-10-18.json",
-  "verified_integration_order": [
+  "main": "a3e63907c2f529f289101698ee7d62f8bf72f436",
+  "pr_manifest": "phase6_pr_heads_2026-10-18.json",
+  "integration_order": [
     2,
     1,
     3,
@@ -13,8 +13,6 @@
   ],
   "merge_conflicts": [],
   "shared_changed_files": [],
-  "unique_changed_files": 70,
-  "all_changed_files_equal_pinned_owner_pr": true,
   "stages": {
     "pr1_5": {
       "local_head": "9da4f6639013cd4f532dd51da0e6b356de39d7db",
@@ -26,7 +24,7 @@
     }
   },
   "tests": {
-    "main_no_db": {
+    "main-no-db": {
       "passed": 1606,
       "failed": 3,
       "skipped": 70,
@@ -36,98 +34,1840 @@
         "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
         "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
         "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
-      ]
+      ],
+      "skips": [
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_insert_idempotent_and_snapshot",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_append_only_enforced",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_check_constraints",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_build_terminal_features_no_nan",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_terminal_set_count",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_terminal_df_row_count",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_run_eml_discovery_returns_output",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_all_candidates_have_valid_trace_id",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_no_nan_in_candidate_tree_json",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_candidate_status_is_promoted_or_rejected",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_alpha_run_creates_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_alpha_candidates_creates_records",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_no_nan_in_db",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_trace_id_consistent_in_db",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestRerunSafety::test_double_upsert_no_duplicate_run",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestRerunSafety::test_double_upsert_no_duplicate_candidates",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_run_records_created",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_folds_created",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_sharpe_is_finite",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_trace_id_consistent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_returns_list",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_decisions_are_valid",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_trace_id_propagated",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_dry_run_no_bridge_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestAuditEvents::test_rejected_candidates_emit_audit_event",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestAuditEvents::test_audit_event_decision_values",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestFullPipelineE2E::test_full_pipeline_completes_without_error",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestFullPipelineE2E::test_full_pipeline_db_counts_consistent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_1_upsert_frost_run",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_2_upsert_frost_candidates",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_3_upsert_frost_evaluation",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_4_upsert_frost_decision",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_5_run_completes",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_6_candidates_evaluated",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_7_decisions_generated",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_8_frost_score_not_null",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_9_dry_run_no_promotion_bridge",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_10_pbo_gate_reject",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_11_turnover_gate_reject",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_12_near_dup_suppression",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_14_emit_run_audit_events",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_15_promote_dry_run",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_16_promote_applied",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_17_rerun_safe_no_duplicates",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_18_view_frost_runs_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_19_view_candidate_scores_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_20_view_selection_summary_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_21_trace_id_end_to_end",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_22_missing_trace_id_zero",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_23_null_frost_score_zero",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_24_selected_only_promotion_eligible",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostReportIntegration::test_25_report_from_pipeline_output",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_migrations_apply_pg::test_all_migrations_apply_twice",
+          "reason": "QED_MIGRATION_TEST_DSN 未設定のため migration 適用テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_run_creates_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_summaries_creates_rows",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_is_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_trace_id_in_summaries",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAAudit::test_audit_event_created_after_writeback",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseBExperimentReport::test_bridge_creates_experiment_run",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseBExperimentReport::test_bridge_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseCKnowledgeArtifact::test_ka_bridge_creates_artifact",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseCKnowledgeArtifact::test_ka_bridge_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseDTargetResolution::test_unresolved_when_no_code",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseDTargetResolution::test_resolved_when_valid_candidate_code",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestUpsertNoDuplicates::test_full_pipeline_rerun_no_duplicates",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_experiment_report_raises_if_run_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_ka_bridge_raises_if_report_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_resolver_raises_if_artifact_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestNormalFunctions::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestSampleMoments::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        }
+      ],
+      "duplicate_test_ids": [],
+      "junit_sha256": "186135b54ebc837d2c87f6a90c0a6e9db617c4b256da95a6e8ca994a37be4c60",
+      "collected_ids_sha256": "6c9cb1bc7c62b6eca7bbcca6089244e2c018d60279238574f8acd5c94619f491"
     },
-    "pr1_5_no_db": {
+    "pr1-5-no-db": {
       "passed": 1985,
       "failed": 0,
       "skipped": 156,
       "deselected": 0,
       "exit_code": 0,
-      "failure_ids": []
+      "failure_ids": [],
+      "skips": [
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[False-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[False-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[False-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[True-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[True-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[True-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_multi_table_truncate_is_rejected_atomically[TRUNCATE TABLE qed_trial_batches, qed_manual_trial_imports CASCADE]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_multi_table_truncate_is_rejected_atomically[TRUNCATE TABLE qed_manual_trial_imports, qed_trial_batches, qed_lineage_edges CASCADE]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[update-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[update-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[update-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[delete-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[delete-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[delete-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_reapplication_preserves_rows_and_statement_triggers",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_has_no_snapshot_capture_dependency",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_requires_084_and_086[qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_requires_084_and_086[qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_insert_idempotent_and_snapshot",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_append_only_enforced",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_check_constraints",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_one_read_never_mixes_ancestry_before_and_after_commit[False]",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_one_read_never_mixes_ancestry_before_and_after_commit[True]",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_database_reader_matches_pure_ledger_across_history_and_filters",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_reader_keeps_callers_uncommitted_writes_and_rollback",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_naive_asof_uses_the_cores_utc_meaning_in_non_utc_session",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_direct_only_reader_does_not_depend_on_an_edge_table",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_register_retry_exact_hash_and_asof",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[n]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[family]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[evidence]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[completed_at]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_relabelled_reformatted_evidence_is_atomic_conflict",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_changed_completion_time_cannot_recount_inventory[False]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_changed_completion_time_cannot_recount_inventory[True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_legacy_hash_receipt_requires_audit_before_new_family_imports",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_independent_evaluation_times_remain_distinct_trials",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_unversioned_submission_is_rejected_without_writes",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_future_evidence_rejected_without_partial_writes",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_long_running_transaction_cannot_backdate",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_asof_between_registration_and_commit_is_not_a_frozen_history[READ_COMMITTED]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_asof_between_registration_and_commit_is_not_a_frozen_history[REPEATABLE_READ]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_orphan_existing_batch_is_not_silently_accepted",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_caller_rollback_removes_receipt_and_batch",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_receipts_append_only",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_duplicate_registration[retry]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_duplicate_registration[relabel]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_duplicate_registration[relabel_and_completion_time]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_cli_write_and_retry",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[subset]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[superset]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[replacement]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[equivalent_row]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_partially_overlapping_inventories_are_atomic",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_exact_retry_is_idempotent_with_sql_ascii_text_results",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_v2_receipt_without_evaluation_registry_requires_audit",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_insert_failure_rolls_back_all_registration_rows",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_registry_is_append_only[UPDATE qed_manual_trial_evaluations SET evaluation_sha256=evaluation_sha256 WHERE batch_id=%s]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_registry_is_append_only[DELETE FROM qed_manual_trial_evaluations WHERE batch_id=%s]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_registry_is_append_only[TRUNCATE qed_manual_trial_evaluations]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_registry_migration_reapplication_preserves_receipts_and_evaluations",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_build_terminal_features_no_nan",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_terminal_set_count",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_terminal_df_row_count",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_run_eml_discovery_returns_output",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_all_candidates_have_valid_trace_id",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_no_nan_in_candidate_tree_json",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_candidate_status_is_promoted_or_rejected",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_alpha_run_creates_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_alpha_candidates_creates_records",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_no_nan_in_db",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_trace_id_consistent_in_db",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestRerunSafety::test_double_upsert_no_duplicate_run",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestRerunSafety::test_double_upsert_no_duplicate_candidates",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_run_records_created",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_folds_created",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_sharpe_is_finite",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_trace_id_consistent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_returns_list",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_decisions_are_valid",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_trace_id_propagated",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_dry_run_no_bridge_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestAuditEvents::test_rejected_candidates_emit_audit_event",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestAuditEvents::test_audit_event_decision_values",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestFullPipelineE2E::test_full_pipeline_completes_without_error",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestFullPipelineE2E::test_full_pipeline_db_counts_consistent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_1_upsert_frost_run",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_2_upsert_frost_candidates",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_3_upsert_frost_evaluation",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_4_upsert_frost_decision",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_5_run_completes",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_6_candidates_evaluated",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_7_decisions_generated",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_8_frost_score_not_null",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_9_dry_run_no_promotion_bridge",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_10_pbo_gate_reject",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_11_turnover_gate_reject",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_12_near_dup_suppression",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_14_emit_run_audit_events",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_15_promote_dry_run",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_16_promote_applied",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_17_rerun_safe_no_duplicates",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_18_view_frost_runs_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_19_view_candidate_scores_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_20_view_selection_summary_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_21_trace_id_end_to_end",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_22_missing_trace_id_zero",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_23_null_frost_score_zero",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_24_selected_only_promotion_eligible",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostReportIntegration::test_25_report_from_pipeline_output",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_migrations_apply_pg::test_all_migrations_apply_twice",
+          "reason": "QED_MIGRATION_TEST_DSN 未設定のため migration 適用テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_run_creates_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_summaries_creates_rows",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_is_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_trace_id_in_summaries",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAAudit::test_audit_event_created_after_writeback",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseBExperimentReport::test_bridge_creates_experiment_run",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseBExperimentReport::test_bridge_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseCKnowledgeArtifact::test_ka_bridge_creates_artifact",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseCKnowledgeArtifact::test_ka_bridge_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseDTargetResolution::test_unresolved_when_no_code",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseDTargetResolution::test_resolved_when_valid_candidate_code",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestUpsertNoDuplicates::test_full_pipeline_rerun_no_duplicates",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_experiment_report_raises_if_run_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_ka_bridge_raises_if_report_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_resolver_raises_if_artifact_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_remains_fixed_after_delayed_writer_finishes[True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_remains_fixed_after_delayed_writer_finishes[False]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_competing_first_captures_replay_one_committed_winner",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_uses_one_visibility_snapshot_across_ledger_reads",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_round_trips_inputs_statistics_and_query_options[True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_round_trips_inputs_statistics_and_query_options[False]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_receipts_are_append_only[UPDATE qed_trial_snapshot_captures SET payload='{}']",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_receipts_are_append_only[DELETE FROM qed_trial_snapshot_captures]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_truncate_cannot_remove_saved_history",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_and_replay_accept_sql_ascii_text_results",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_missing_capture_never_falls_back_to_live_ledger",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_requires_idle_autocommit_connection",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_does_not_commit_or_roll_back_callers_transaction",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_rejects_future_cutoff",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_failure_rolls_back_and_can_be_retried",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_corrupted_payload_instead_of_recalculating",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path0-True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path1-1.0]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path2--1]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path3-True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path4-3]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path5-True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path6-value6]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path7-value7]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path8-1.0]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path9--1]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_cli_capture_and_show_return_the_same_saved_inputs",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_missing_migration_fails_without_live_fallback",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestNormalFunctions::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestSampleMoments::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        }
+      ],
+      "duplicate_test_ids": [],
+      "junit_sha256": "f0b23a78848b2ff31a4b3b639777d2afcf2f3ec2306576b0f45321c05130343c",
+      "collected_ids_sha256": "677defc86a9c0afdec1db4d2682e86561d09351c11b777b1099adb3325be70b9"
     },
-    "pr1_6_no_db": {
+    "pr1-6-no-db": {
       "passed": 2068,
       "failed": 0,
       "skipped": 156,
       "deselected": 0,
       "exit_code": 0,
-      "failure_ids": []
+      "failure_ids": [],
+      "skips": [
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[False-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[False-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[False-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[True-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[True-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_each_table_rejects_truncate_without_losing_existing_values[True-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_multi_table_truncate_is_rejected_atomically[TRUNCATE TABLE qed_trial_batches, qed_manual_trial_imports CASCADE]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_multi_table_truncate_is_rejected_atomically[TRUNCATE TABLE qed_manual_trial_imports, qed_trial_batches, qed_lineage_edges CASCADE]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[update-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[update-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[update-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[delete-qed_trial_batches]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[delete-qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_update_and_delete_remain_rejected[delete-qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_reapplication_preserves_rows_and_statement_triggers",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_has_no_snapshot_capture_dependency",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_requires_084_and_086[qed_lineage_edges]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_ledger_immutability_pg::test_migration_requires_084_and_086[qed_manual_trial_imports]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_insert_idempotent_and_snapshot",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_append_only_enforced",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_check_constraints",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_one_read_never_mixes_ancestry_before_and_after_commit[False]",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_one_read_never_mixes_ancestry_before_and_after_commit[True]",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_database_reader_matches_pure_ledger_across_history_and_filters",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_reader_keeps_callers_uncommitted_writes_and_rollback",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_naive_asof_uses_the_cores_utc_meaning_in_non_utc_session",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_lineage_pg::test_direct_only_reader_does_not_depend_on_an_edge_table",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_register_retry_exact_hash_and_asof",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[n]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[family]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[evidence]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_same_identity_conflicting_payload_rejected[completed_at]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_relabelled_reformatted_evidence_is_atomic_conflict",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_changed_completion_time_cannot_recount_inventory[False]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_changed_completion_time_cannot_recount_inventory[True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_legacy_hash_receipt_requires_audit_before_new_family_imports",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_independent_evaluation_times_remain_distinct_trials",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_unversioned_submission_is_rejected_without_writes",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_future_evidence_rejected_without_partial_writes",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_long_running_transaction_cannot_backdate",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_asof_between_registration_and_commit_is_not_a_frozen_history[READ_COMMITTED]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_asof_between_registration_and_commit_is_not_a_frozen_history[REPEATABLE_READ]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_orphan_existing_batch_is_not_silently_accepted",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_caller_rollback_removes_receipt_and_batch",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_receipts_append_only",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_duplicate_registration[retry]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_duplicate_registration[relabel]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_duplicate_registration[relabel_and_completion_time]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_cli_write_and_retry",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[subset]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[superset]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[replacement]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_repackaged_inventory_cannot_recount_an_existing_evaluation[equivalent_row]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_concurrent_partially_overlapping_inventories_are_atomic",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_exact_retry_is_idempotent_with_sql_ascii_text_results",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_v2_receipt_without_evaluation_registry_requires_audit",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_insert_failure_rolls_back_all_registration_rows",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_registry_is_append_only[UPDATE qed_manual_trial_evaluations SET evaluation_sha256=evaluation_sha256 WHERE batch_id=%s]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_registry_is_append_only[DELETE FROM qed_manual_trial_evaluations WHERE batch_id=%s]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_evaluation_registry_is_append_only[TRUNCATE qed_manual_trial_evaluations]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_adr002_s3_manual_pg::test_registry_migration_reapplication_preserves_receipts_and_evaluations",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_build_terminal_features_no_nan",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_terminal_set_count",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseATerminalSet::test_terminal_df_row_count",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_run_eml_discovery_returns_output",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_all_candidates_have_valid_trace_id",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_no_nan_in_candidate_tree_json",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseBEMLSearch::test_candidate_status_is_promoted_or_rejected",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_alpha_run_creates_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_alpha_candidates_creates_records",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_upsert_no_nan_in_db",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseCDBWrite::test_trace_id_consistent_in_db",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestRerunSafety::test_double_upsert_no_duplicate_run",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestRerunSafety::test_double_upsert_no_duplicate_candidates",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_run_records_created",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_folds_created",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_sharpe_is_finite",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseDBacktest::test_backtest_trace_id_consistent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_returns_list",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_decisions_are_valid",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_trace_id_propagated",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestPhaseEPromotion::test_promote_batch_dry_run_no_bridge_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestAuditEvents::test_rejected_candidates_emit_audit_event",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestAuditEvents::test_audit_event_decision_values",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestFullPipelineE2E::test_full_pipeline_completes_without_error",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_eml_pipeline_integration.TestFullPipelineE2E::test_full_pipeline_db_counts_consistent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_1_upsert_frost_run",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_2_upsert_frost_candidates",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_3_upsert_frost_evaluation",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostWriter::test_4_upsert_frost_decision",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_5_run_completes",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_6_candidates_evaluated",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_7_decisions_generated",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_8_frost_score_not_null",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostRunner::test_9_dry_run_no_promotion_bridge",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_10_pbo_gate_reject",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_11_turnover_gate_reject",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostHardGates::test_12_near_dup_suppression",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_14_emit_run_audit_events",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_15_promote_dry_run",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostBridges::test_16_promote_applied",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_17_rerun_safe_no_duplicates",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_18_view_frost_runs_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_19_view_candidate_scores_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_20_view_selection_summary_selectable",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_21_trace_id_end_to_end",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_22_missing_trace_id_zero",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_23_null_frost_score_zero",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostDataQuality::test_24_selected_only_promotion_eligible",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_frost_integration.TestFrostReportIntegration::test_25_report_from_pipeline_output",
+          "reason": "QED_PG_DSN 環境変数が設定されていないため統合テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_migrations_apply_pg::test_all_migrations_apply_twice",
+          "reason": "QED_MIGRATION_TEST_DSN 未設定のため migration 適用テストをスキップ"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_run_creates_record",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_summaries_creates_rows",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_upsert_is_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAWriteback::test_trace_id_in_summaries",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseAAudit::test_audit_event_created_after_writeback",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseBExperimentReport::test_bridge_creates_experiment_run",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseBExperimentReport::test_bridge_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseCKnowledgeArtifact::test_ka_bridge_creates_artifact",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseCKnowledgeArtifact::test_ka_bridge_idempotent",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseDTargetResolution::test_unresolved_when_no_code",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestPhaseDTargetResolution::test_resolved_when_valid_candidate_code",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestUpsertNoDuplicates::test_full_pipeline_rerun_no_duplicates",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_experiment_report_raises_if_run_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_ka_bridge_raises_if_report_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_pipeline_integration.TestFailureCases::test_resolver_raises_if_artifact_missing",
+          "reason": "PostgreSQL が利用できないため SKIP (QED_PG_DSN 未設定 or 接続不可)"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_remains_fixed_after_delayed_writer_finishes[True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_remains_fixed_after_delayed_writer_finishes[False]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_competing_first_captures_replay_one_committed_winner",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_uses_one_visibility_snapshot_across_ledger_reads",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_round_trips_inputs_statistics_and_query_options[True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_round_trips_inputs_statistics_and_query_options[False]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_receipts_are_append_only[UPDATE qed_trial_snapshot_captures SET payload='{}']",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_receipts_are_append_only[DELETE FROM qed_trial_snapshot_captures]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_truncate_cannot_remove_saved_history",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_and_replay_accept_sql_ascii_text_results",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_missing_capture_never_falls_back_to_live_ledger",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_requires_idle_autocommit_connection",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_does_not_commit_or_roll_back_callers_transaction",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_rejects_future_cutoff",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_capture_failure_rolls_back_and_can_be_retried",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_corrupted_payload_instead_of_recalculating",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path0-True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path1-1.0]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path2--1]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path3-True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path4-3]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path5-True]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path6-value6]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path7-value7]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path8-1.0]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_replay_rejects_invalid_jsonb_payload_with_correct_checksum[path9--1]",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_cli_capture_and_show_return_the_same_saved_inputs",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.integration.test_trial_snapshot_capture_pg::test_missing_migration_fails_without_live_fallback",
+          "reason": "QED_PG_DSN not configured"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestNormalFunctions::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestSampleMoments::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        }
+      ],
+      "duplicate_test_ids": [],
+      "junit_sha256": "cfdc4a2aea54637a75ff1dd3e30321f7a1c9d5243b9886c4e41e6ec7bf6ce0f4",
+      "collected_ids_sha256": "99797b0d683652af6abc49118a1d2bb4f09a15e6b0caa6a05d7d3b5aada8af49"
     },
-    "pr1_ledger_pg": {
+    "pr1-ledger-pg": {
       "passed": 89,
       "failed": 0,
       "skipped": 0,
-      "deselected": 0
+      "deselected": 0,
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "58f78cc586ce3dc054c17080cafd4bfde6aa32f35997395ff0b95b11b2dbe21b",
+      "collected_ids_sha256": "6fb8a353724769304ab5ff725d74201de9da40ccae72bc21f674e658a66eb60f"
     },
-    "integrated_ledger_pg": {
+    "integrated-ledger-pg": {
       "passed": 89,
       "failed": 0,
       "skipped": 0,
-      "deselected": 0
+      "deselected": 0,
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "356469c2e6eeff403972d5af0bc20260545e1065a5e34208aaf6cec8ff910464",
+      "collected_ids_sha256": "6fb8a353724769304ab5ff725d74201de9da40ccae72bc21f674e658a66eb60f"
     },
-    "all_migrations_standalone": {
+    "all-migrations-standalone": {
       "passed": 1,
       "failed": 0,
       "skipped": 0,
-      "deselected": 0
+      "deselected": 0,
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "d8b050f14ea8fd42bed17cca8fd0fd864abdd65731a7b3e661441d34f7274c37",
+      "collected_ids_sha256": "ea79e52c2cc820f51a898cbb49c457399d741545c8cc14c854610c00e62de1e2"
     },
-    "integrated_pg_before_views": {
+    "integrated-pg-standalone": {
       "passed": 211,
       "failed": 7,
       "skipped": 0,
       "deselected": 7,
-      "reason": "Repository FROST views 060-063 were not installed"
+      "exit_code": 1,
+      "failure_ids": [
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_18_view_frost_runs_selectable",
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_19_view_candidate_scores_selectable",
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_20_view_selection_summary_selectable",
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_21_trace_id_end_to_end",
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_22_missing_trace_id_zero",
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_23_null_frost_score_zero",
+        "tests.integration.test_frost_integration.TestFrostDataQuality::test_24_selected_only_promotion_eligible"
+      ],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "220ade4a60de913dff3f239740388eb24bfe2737b000559681c42a3ddf01f17b",
+      "collected_ids_sha256": "51826cc0ff939a3f6c09af9451dfe5cbf85a44792527a22dacd402695062b461"
     },
-    "integrated_pg_after_views": {
+    "integrated-pg-ready": {
       "passed": 218,
       "failed": 0,
       "skipped": 0,
-      "deselected": 7
+      "deselected": 7,
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "24ac1ea6179f4df700047526504ccccf4a025f0e555a33e4e909e953288f2f2e",
+      "collected_ids_sha256": "51826cc0ff939a3f6c09af9451dfe5cbf85a44792527a22dacd402695062b461"
     },
-    "integrated_full_pg_before_scipy": {
+    "integrated-full-pg": {
       "passed": 2215,
       "failed": 0,
       "skipped": 2,
-      "deselected": 7
+      "deselected": 7,
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [
+        {
+          "id": "tests.unit.test_phase4_dsr.TestNormalFunctions::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        },
+        {
+          "id": "tests.unit.test_phase4_dsr.TestSampleMoments::test_against_scipy",
+          "reason": "could not import 'scipy.stats': No module named 'scipy'"
+        }
+      ],
+      "duplicate_test_ids": [],
+      "junit_sha256": "3a10a321a1e7f4a407fe473fe585ac26d2dea26c19bb9d0ae9100f8486c2248e",
+      "collected_ids_sha256": "48bb3164343f5f5cfbd88f431471a2e49c6841a74e0d0b6a2ff9e35e6b9720f9"
     },
-    "main_isolated_scipy_reference": {
+    "main-scipy-reference": {
       "passed": 2,
       "failed": 0,
       "skipped": 0,
       "deselected": 0,
-      "exit_code": 0
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "6fd5844fa02dbe39e836540e9277f8f9153746844046b56988aa6387e2e65960",
+      "collected_ids_sha256": "8ff5f3d5e3b9554b13edf124dfa375fdfce8949e8a1cf57b95713f16bcb39fc4"
     },
-    "integrated_isolated_scipy_reference": {
+    "integrated-scipy-reference": {
       "passed": 2,
       "failed": 0,
       "skipped": 0,
       "deselected": 0,
-      "exit_code": 0
+      "exit_code": 0,
+      "failure_ids": [],
+      "skips": [],
+      "duplicate_test_ids": [],
+      "junit_sha256": "4bb1cbb4d8a11957e7e37ca31102795d4b4d529153e806d0add6e9d716f27cd3",
+      "collected_ids_sha256": "8ff5f3d5e3b9554b13edf124dfa375fdfce8949e8a1cf57b95713f16bcb39fc4"
     },
-    "integrated_full_pg_final": {
+    "integrated-full-pg-scipy": {
       "passed": 2217,
       "failed": 0,
       "skipped": 0,
-      "deselected": 7
+      "deselected": 7,
+      "failure_ids": [],
+      "junit_sha256": "f18244f02f9e8fb40c92b01ca27abcb83618eb7d5f5c75ee164c6e4a886dc215",
+      "collected_ids_sha256": "48bb3164343f5f5cfbd88f431471a2e49c6841a74e0d0b6a2ff9e35e6b9720f9"
+    },
+    "post-restart-full-pg": {
+      "passed": 2217,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 7,
+      "exit_code": 0,
+      "failure_ids": [],
+      "junit_sha256": "244a31a5895fd60d987f21020e86a3b44842adae685af418a18b92bb2e86680a"
     }
   },
-  "primary_no_db_independent_replay_counts_and_ids_match": true,
+  "replay_same_test_counts_and_ids": true,
+  "replay_result_sha256": "0a83bda6a8e97d093b74277390709c982fec1eee9637844189e3fb612edcf6b9",
   "removed_baseline_test_ids": [],
-  "duplicate_test_ids": [],
   "new_failure_ids": [],
   "resolved_main_failure_ids": [
     "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
     "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
     "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
   ],
-  "captured_replay_junit_sha256": {
-    "main_no_db": "b55f7bf4198d5278bf15215fe7b632a739dc7c211a37ce3e77cb804c6dd97aa1",
-    "pr1_5_no_db": "10501a8029b761fc4661142941bedfc21b8b4870e15b655ecd1d21cf00d2abc9",
-    "pr1_6_no_db": "466418ad2de39883a59dd4cf5b2d4e4508e0dd48beb2c5d17d8122f1f4282235"
+  "ledger_pg_case_ids_identical": true,
+  "all_70_changed_files_equal_their_pinned_owner_pr": true,
+  "protected_source_sha256_unchanged": {
+    "analytics/python/frost/frost_dsr.py": "ca15f5b48da4146fc51159b3778e2f09ec74489896987cc38b0067116c00a87e",
+    "analytics/python/frost/frost_pbo.py": "31b540c3bf72bcb52db7837a09802c9b8baffcad700c83da88b60415de0af911",
+    "analytics/python/frost/frost_pbo_parallel.py": "2c8ace87e92aaa6ce2761a29a5a291e84326cd6e660d3293a5b32ddc8abfab19",
+    "analytics/python/frost/score_engine.py": "8cbe0c3e6f2d8e588633e646cf59d4065deb66ad6b7c949874ab53271e438228",
+    "analytics/python/frost/gate_engine.py": "b6c6c14db0ace7fc6fb4a44aa3708044c2c44d686c20fc37b2ccc9bc94e4ef23",
+    "analytics/python/frost/frost_decision_engine.py": "ffbdca504910cff40a6b8f43cccc5785eab035f68e913639f600b094f3355c79",
+    "analytics/python/frost/promotion_gates.py": "609b0e04cf38bfb9479533570ea5f81e2663c2aa82802c3859600ab53f9c1774",
+    "analytics/python/frost/frost_lineage.py": "b3fb72e9796b57306208322e95b9a706b33e668d5f7a27217d5c15adb1d2cda5",
+    "analytics/python/frost/frost_run_lineage.py": "eb01bd46633e2244e456c8e403d383fedd360b18d13b7c2f640431c21cdc519d",
+    "analytics/python/alpha/eml/eml_lineage.py": "0daef460c66f0ad61565fad0d4230337a2b218d038937f32bdebd8ba038db256"
   },
-  "final_pg_junit_sha256": null,
-  "final_pg_junit_sha256_status": "Not computed before execution-environment disconnection; do not infer",
+  "golden_baselines_unchanged": true,
+  "standalone_views_setup": {
+    "repository_views_applied": [
+      {
+        "path": "qedschema/views/060_v_frost_runs.sql",
+        "sha256": "648a7d5e477ff6ba8ae585a32b47cc3515da97aee4dbc1bb7a5830d0d1ab51c2"
+      },
+      {
+        "path": "qedschema/views/061_v_frost_candidate_scores.sql",
+        "sha256": "e8d785e8ac941e3dc3950164f7530b11194efcf7ae82e245829ef8b5da8e1a4a"
+      },
+      {
+        "path": "qedschema/views/062_v_frost_selection_summary.sql",
+        "sha256": "85743e73d528e5ad4830e24cbb9df5d996d2be1ec1aaff8e7c448ab69c42218d"
+      },
+      {
+        "path": "qedschema/views/063_v_frost_promotion_status.sql",
+        "sha256": "ec38b61fc326df750f27bffb4472d531766e29001f7add0320d69f9c6bc39c01"
+      }
+    ],
+    "parent_schema_verified": false,
+    "external_parent_tests_run": false
+  },
+  "postgres": {
+    "version": "16.15",
+    "image_digest": "sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4",
+    "network_mode": "none",
+    "connection": "owned Unix socket only",
+    "production_or_ec2_connected": false
+  },
+  "migration_matrix": {
+    "synthetic_only": true,
+    "external_parent_stubs": false,
+    "migration_order": [
+      "084_qed_trial_ledger.sql",
+      "086_qed_manual_trial_imports.sql",
+      "087_qed_trial_snapshot_captures.sql",
+      "088_qed_trial_ledger_no_truncate.sql",
+      "089_qed_manual_trial_evaluations.sql"
+    ],
+    "missing_prerequisites_rejected": {
+      "086_qed_manual_trial_imports.sql": "UndefinedTable",
+      "087_qed_trial_snapshot_captures.sql": "UndefinedFunction",
+      "088_qed_trial_ledger_no_truncate.sql": "UndefinedTable",
+      "089_qed_manual_trial_evaluations.sql": "UndefinedTable"
+    },
+    "passed": true,
+    "s1_n_raw": 3,
+    "s2_n_raw": 2,
+    "s3_n_raw": 2,
+    "combined_n_raw": 7,
+    "sr_sufficient_stat_count": 2,
+    "s2_duplicate_hash_counted_once": true,
+    "s2_eml_excluded": true,
+    "snapshot_without_086": true,
+    "reapplications": 2,
+    "row_values_unchanged": true,
+    "capture_replay_hash_verified": true,
+    "exact_retry_idempotent": true,
+    "live_asof_changes_after_late_commit": true,
+    "saved_capture_remains_fixed": true,
+    "frost_audit_on_off_real_writer_and_s2_equal": true,
+    "frost_comparison_normalizes_only_ids_and_timestamps": true,
+    "frost_pipeline_migrations": [
+      "060_frost_runs.sql",
+      "061_frost_fitness_candidates.sql",
+      "062_frost_evaluations.sql",
+      "063_frost_selection_decisions.sql",
+      "082_qed_policies.sql",
+      "083_frost_runs_policy_hash.sql"
+    ],
+    "frost_per_run_s2_n_raw": 2,
+    "frost_real_promotion_count": 0,
+    "owned_disposable_database_dropped": true
+  },
+  "cross_component_and_recovery_probe": {
+    "c_d_independent": true,
+    "combined_tree": "beb22861f64b4b40f4c77e78d4bc16f10a82eae3",
+    "detected_unaudited_synthetic_runs": [
+      "synthetic-unaudited-run"
+    ],
+    "eml_results_and_s1_stats_equal": true,
+    "external_anchor_implemented": false,
+    "fsync_measurement": {
+      "allocated_file_bytes": 262144,
+      "bytes_per_sample": 4096,
+      "directory_ms": {
+        "p05": 0.12667999999393942,
+        "p50": 0.16596850036876276,
+        "p95": 0.24897599996620556
+      },
+      "file_ms": {
+        "p05": 0.4026530004921369,
+        "p50": 0.48269449962390354,
+        "p95": 0.7759969994367566
+      },
+      "filesystem_available_bytes_at_measurement": 27308507136,
+      "filesystem_available_inodes_at_measurement": 1966888,
+      "logical_sync_pairs_per_second": 1206.963409437281,
+      "physical_device_iops": null,
+      "samples": 64
+    },
+    "local_backup_restore_verified": true,
+    "local_checkpoint_detected_suffix_removal": true,
+    "off_host_backup_tested": false,
+    "pretty_single_json_quarantined_unchanged": true,
+    "probe_sha256": "deb0a70b0877cf4331b69703f98249502c2367b7b2bc2fd57b563dd508c165b6",
+    "research_eligible": false,
+    "run_registry_is_independent_fixture": true,
+    "s1_n_raw": 2,
+    "same_original_retry_idempotent": true,
+    "synthetic_only": true
+  },
+  "isolated_scipy_reference": {
+    "version": "1.16.3",
+    "installed_in_application_venv": false,
+    "runtime_dependency_added": false
+  },
   "parent_app_test_ids_collected_not_executed": [
     "tests/integration/test_pipeline_integration.py::TestPhaseBExperimentReport::test_bridge_creates_experiment_run",
     "tests/integration/test_pipeline_integration.py::TestPhaseBExperimentReport::test_bridge_idempotent",
@@ -137,113 +1877,56 @@
     "tests/integration/test_pipeline_integration.py::TestPhaseDTargetResolution::test_resolved_when_valid_candidate_code",
     "tests/integration/test_pipeline_integration.py::TestUpsertNoDuplicates::test_full_pipeline_rerun_no_duplicates"
   ],
-  "protected_sources_unchanged": [
-    "analytics/python/alpha/eml/eml_lineage.py",
-    "analytics/python/frost/frost_dsr.py",
-    "analytics/python/frost/frost_pbo.py",
-    "analytics/python/frost/frost_pbo_parallel.py",
-    "analytics/python/frost/score_engine.py",
-    "analytics/python/frost/gate_engine.py",
-    "analytics/python/frost/frost_decision_engine.py",
-    "analytics/python/frost/promotion_gates.py",
-    "analytics/python/frost/frost_lineage.py",
-    "analytics/python/frost/frost_run_lineage.py"
-  ],
-  "golden_baselines_unchanged": true,
-  "postgres": {
-    "server_version": "16.15",
-    "image_digest": "sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4",
-    "network_mode": "none",
-    "connection": "Owned Unix socket; new disposable synthetic databases",
-    "parent_stubs_in_ledger_probe": false,
-    "parent_stubs_in_existing_all_migration_fixture": true,
-    "parent_app_integration_verified": false,
-    "production_connected": false
-  },
-  "migration_probe": {
-    "synthetic_only": true,
-    "migration_order": [
-      84,
-      86,
-      87,
-      88,
-      89
-    ],
-    "missing_prerequisites_rejected": true,
-    "snapshot_084_087_without_086": true,
-    "reapplications": 2,
-    "row_values_unchanged": true,
-    "s1_n_raw": 3,
-    "s2_n_raw": 2,
-    "s3_n_raw": 2,
-    "combined_n_raw": 7,
-    "sr_sufficient_stat_count": 2,
-    "s2_duplicate_hash_counted_once": true,
-    "s2_eml_excluded": true,
-    "exact_retry_idempotent": true,
-    "capture_replay_hash_verified": true,
-    "live_asof_changes_after_late_commit": true,
-    "saved_capture_remains_fixed": true,
-    "frost_audit_on_off_real_writer_and_s2_equal": true,
-    "frost_per_run_s2_n_raw": 2,
-    "real_promotion_count": 0,
-    "owned_probe_database_dropped": true
-  },
-  "local_recovery_probe": {
-    "synthetic_only": true,
-    "probe_source_sha256": "deb0a70b0877cf4331b69703f98249502c2367b7b2bc2fd57b563dd508c165b6",
-    "c_d_independent": true,
-    "eml_results_and_s1_stats_equal": true,
-    "s1_n_raw": 2,
-    "same_original_retry_idempotent": true,
-    "pretty_single_json_quarantined_unchanged": true,
-    "local_backup_restore_verified": true,
-    "off_host_backup_tested": false,
-    "local_checkpoint_detected_suffix_removal": true,
-    "external_anchor_implemented": false,
-    "synthetic_unaudited_run_detected": true,
-    "research_eligible": false,
-    "fsync": {
-      "samples": 64,
-      "bytes_per_sample": 4096,
-      "file_ms": {
-        "p05": 0.4026530004921369,
-        "p50": 0.48269449962390354,
-        "p95": 0.7759969994367566
-      },
-      "directory_ms": {
-        "p05": 0.12667999999393942,
-        "p50": 0.16596850036876276,
-        "p95": 0.24897599996620556
-      },
-      "logical_sync_pairs_per_second": 1206.963409437281,
-      "physical_device_iops": null,
-      "allocated_file_bytes": 262144,
-      "available_filesystem_bytes": 27308507136,
-      "available_filesystem_inodes": 1966888
-    }
-  },
-  "isolated_scipy_reference": {
-    "version": "1.16.3",
-    "application_venv_modified": false,
-    "runtime_dependency_added": false
-  },
-  "provenance_limitations": {
-    "execution_environment": "Offline/starting after final tests; commands could no longer read the workspace",
-    "remote_publication": "GitHub connector used to preserve previously observed results and designs",
-    "raw_junit_and_logs": "Not recovered or uploaded after disconnection",
-    "local_uncommitted_probe_and_replay_scripts": "Not recovered or uploaded; this PR contains documentation only",
-    "workspace_post_restart_integrity": "Not verified",
-    "disposable_pg_container_and_volume_cleanup": "Not confirmed; cleanup command did not execute",
-    "final_log_observation": "Observed 2217 passed, 7 deselected, 28830 warnings in 78.11 seconds before disconnection"
-  },
-  "main_or_existing_pr_modified": false,
   "real_exporter_originals_received": false,
-  "note008_adoption": "HOLD",
+  "research_adoption": "HOLD",
   "new_hard_gates": "HOLD",
-  "decision": {
-    "software_integration_observed": "GO",
-    "final_integration_signoff_until_raw_evidence_recovered": "HOLD",
-    "real_exporter_and_production": "HOLD"
+  "main_or_existing_pr_modified": false,
+  "latest_full_profile": "post-restart-full-pg",
+  "post_restart_files": {
+    "workspace_after_execution_environment_restart_verified": true,
+    "receipt_and_event_hashes_match_pre_restart_local_checkpoint": true,
+    "local_directories_checked": [
+      "source",
+      "backup-local-simulation",
+      "restore-local-simulation"
+    ],
+    "off_host_or_media_failure_tested": false
+  },
+  "post_restart_postgres": {
+    "postgres_restarted_after_execution_environment_disconnection": true,
+    "container_prior_exit_code": 255,
+    "container_oom_killed": false,
+    "network_mode": "none",
+    "valid_saved_capture_replays": 16,
+    "expected_negative_fixture_rejected": 1,
+    "negative_fixture_source": "tests/integration/test_trial_snapshot_capture_pg.py::test_replay_rejects_corrupted_payload_instead_of_recalculating",
+    "unexplained_replay_failures": 0,
+    "pre_restart_capture_count_external_anchor": null,
+    "power_loss_or_media_failure_claimed": false
+  },
+  "execution_environment_incident": {
+    "observed": "offline/starting after tests, then recovered",
+    "initial_pr_saved_via_github_connector": true,
+    "source_scripts_and_raw_results_recovered": true,
+    "results_reparsed_and_checksums_computed_after_recovery": true,
+    "original_results_not_rewritten": true,
+    "post_restart_full_suite_exit_code": 0,
+    "remaining_raw_evidence_recovery_hold": false
+  },
+  "probe_scripts_sha256": {
+    "scripts/audit/phase6_cross_component_probe.py": "deb0a70b0877cf4331b69703f98249502c2367b7b2bc2fd57b563dd508c165b6",
+    "scripts/audit/phase6_migration_probe.py": "1901930c0228573724de75cc469ced3578ef286f7efbddf9b72a160a39431a36",
+    "scripts/audit/run_phase6_regression.py": "82d9eb396904b89d20815d7c422279713f794d3d4c1dd7812b745ef2576adda7"
+  },
+  "disposable_test_postgres_cleanup": {
+    "container_removed": true,
+    "owned_volume_removed": true,
+    "production_resources_modified": false
+  },
+  "evidence_bundle": {
+    "archive": "docs/reports/evidence/phase6_2026-10-18.tar.gz",
+    "size_bytes": 291033,
+    "sha256": "87e8da62c04dbfcf17adeec2d1aa242a64a3c838ae0343a614bf1296ac182421",
+    "manifest": "docs/reports/phase6_evidence_manifest_2026-10-18.json"
   }
 }

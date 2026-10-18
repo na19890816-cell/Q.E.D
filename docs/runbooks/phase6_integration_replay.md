@@ -1,13 +1,17 @@
-# Phase 6 統合回帰の再現手順
-[固定HEAD](../reports/phase6_pr_heads_2026-10-18.json)を使用する。
-本書は専用ローカル合成環境用。main/実PR/base/Draft/本番に書き込まない。
+# Phase 6 統合検証の再現手順
 
-## DBなし
-検証環境はPython3.12.14、pytest9.1.1、numpy2.5.4、pandas3.0.6、psycopg3.3.6、
-jsonschema4.25.1。jsonschemaはPR #4のtest-only依存で、新runtime依存はない。
-GitHub/proxy/CAの認証設定を維持し、値をログへ出さない。
+対象は [固定した PR HEAD](../reports/phase6_pr_heads_2026-10-18.json)。
+main／既存 PR の ref・base・Draft を変更せず、ローカルに新しい検証 worktree を作る。
+以下は正式な production／親 schema への初期化手順ではない。
 
-~~~bash
+## DB なしの統合
+
+検証済みは Python 3.12.14、pytest 9.1.1、numpy 2.5.4、pandas 3.0.6、psycopg 3.3.6、
+jsonschema 4.25.1。後者は PR #4 の `requirements-contract-test.txt` にある test-only dependency。
+新しい runtime dependency を追加しない。プロキシ／CA／GitHub 認証の設定を維持する。
+
+```bash
+# repo 内の HEAD ではなく、JSON manifest に固定した各 commit を使用する
 git fetch origin main \
   +refs/pull/1/head:refs/remotes/phase6/pr1 \
   +refs/pull/2/head:refs/remotes/phase6/pr2 \
@@ -16,91 +20,125 @@ git fetch origin main \
   +refs/pull/5/head:refs/remotes/phase6/pr5 \
   +refs/pull/6/head:refs/remotes/phase6/pr6
 
-git worktree add --detach /path/to/NEW-baseline a3e63907c2f529f289101698ee7d62f8bf72f436
-git worktree add -b audit/phase6-NEW-local /path/to/NEW-combined a3e63907c2f529f289101698ee7d62f8bf72f436
-~~~
+python scripts/audit/run_phase6_regression.py \
+  --repo /path/to/Q.E.D --python /path/to/venv/bin/python \
+  --manifest docs/reports/phase6_pr_heads_2026-10-18.json \
+  --work-dir /path/to/existing-parent/NEW-phase6-replay
+```
 
-各固定SHAが取得済みであることを確認する。後日PRが変わった場合も固定SHAで再現し、新HEADと混同しない。
-baseline treeで以下を実行し、失敗/skipを残す。
+manifest の commit が local object database にない場合は先に固定 SHA を fetch する。
+live PR HEAD が後日変わっても、記録した旧検証と新 HEAD の検証を混同しない。
+script は baseline を detached worktree、統合先を `audit/phase6-replay-<uuid>` に作る。
+order #2→#1→#3→#4→#5 で全体試験、その後 #6 を追加して再度全体試験を行う。
+各 pytest で DB 変数を除去し、PYTHONPATH を対象 worktree のみに固定する。
+baseline の既存失敗も残す。統合後失敗・元テスト消失・重複 ID・競合は script の失敗となる。
 
-~~~bash
-env -u QED_PG_DSN -u QED_MIGRATION_TEST_DSN PYTHONPATH="$PWD" \
-  /path/to/venv/bin/python -m pytest -q --junitxml=/path/to/main.xml
-~~~
+work-dir に log/XML/result.json と検証 tree を残す。競合したらこの新規 tree で調査し、
+既存 PR を retarget/rebase/force-push しない。今回記録した tree hash は次のとおり。
 
-combined treeでは以下の固定commitを順番にlocal mergeする。
-~~~bash
-git merge --no-ff --no-edit 99604b427716a760a949d85b311f4ecb9728804c
-git merge --no-ff --no-edit fbb0ef26a5a5f889dedf9aeed8d858635da68aa0
-git merge --no-ff --no-edit 44c974b585f292e91d62de3f7bb8b7b3a3343c11
-git merge --no-ff --no-edit c92cef13ed01542145c2e97989efce88f9bd64e5
-git merge --no-ff --no-edit 35d670f7181c870cfffd1a5da037e6ad41b66796
-~~~
+- #1〜#5: `bda32f10ad25cda4b003d1004846c14e9c65e00f`
+- #1〜#6: `5ed8cb89bc0aa2dc93b83597099595d4c75b232a`
 
-同じDBなしコマンドで#1〜#5結果を保存し、次を追加して再度全体実行する。
-~~~bash
-git merge --no-ff --no-edit 3bca51dc11779ef51416888e111c620d01cdceb3
-~~~
+local merge commit SHA は実行日時により変わり得る。tree hash と pinned parents、テスト ID を照合する。
+script の初回検証では local main 未作成の前提を修正し、local main がない checkout では
+`refs/remotes/origin/main` を読み取り監視する。修正後の完全 replay は全段階で同一件数・IDを再現した。
 
-今回のtree hashは#1〜#5 bda32f10ad25cda4b003d1004846c14e9c65e00f、
-#1〜#6 5ed8cb89bc0aa2dc93b83597099595d4c75b232a。
-local merge commit SHAは日時により変わる。tree/parents/test IDを照合する。
-元test ID消失・重複・新失敗を検査する。競合調査はこの専用treeだけで行う。
-新しいreplay scriptでも全三段階を実行して件数/ID一致を確認したが、script未コミット版は環境断で回収待ち。
+## 独立性・ローカル復元・fsync probe
 
-## PostgreSQL
-今回はPostgreSQL16.15、image digest
-sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4、
-Docker network=none、port公開なし、新規専用Unix socket/DBを使った。
-local daemonを明示しDocker endpoint/context/TLS selectorを除去、proxy/CAは維持した。
+```bash
+python scripts/audit/phase6_cross_component_probe.py \
+  --tree /path/to/NEW-phase6-replay/combined \
+  --work-dir /path/to/existing-parent/NEW-phase6-probe
+```
 
-新しい空の別DBをPR #1単独と統合用に用意し、QED_PG_DSNを各専用Unix socketへ設定して実行する。
-~~~bash
+新しい専用 directory に合成原本・C receipt・D event を生成し、既存ファイルを上書きしない。
+C/D の相互不変、再送、pretty single JSON の隔離、ローカル backup/restore、tail 削除検出、
+未監査 run の registry 差分、4 KiB×64 file の fsync を検証する。
+result.json に script 自身の SHA を記録する。実原本、off-host、外部署名、媒体障害は検証しない。
+
+## PostgreSQL の専用試験環境
+
+今回は managed local Docker daemon、`postgres:16-bookworm` の固定 digest
+`sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4`
+（PostgreSQL 16.15）を使用した。network は none、外へ公開した port はなく、
+新規専用 Unix socket と synthetic DB だけを使った。
+Docker の endpoint/context/TLS selector を除去して local daemon を明示し、proxy/CA は維持した。
+
+再現時は専用・未使用の container/volume 名、既存 parent 下の socket directory を用意する。
+Docker を使わない場合も、同等の破棄可能な local Unix socket の PostgreSQL を指定する。
+control DB `qed_phase6` を新規作成しておく。一般の DSN／本番 DB を指定しない。
+
+```bash
+env FROST_LINEAGE_ENABLED=1 python scripts/audit/phase6_migration_probe.py \
+  --tree /path/to/NEW-phase6-replay/combined \
+  --socket-dir /path/to/owned-test-socket \
+  --output /path/to/existing-parent/NEW-migration-result.json
+```
+
+probe は新しい `qed_phase6_probe_<uuid>` だけを作成・最後に削除する。
+084/086/087/088/089 の prerequisite・再適用・capture と S1/S2/S3 を実 DDL で検証し、
+060/061/062/063/082/083 の実 DDL を追加して、FROST audit 有無の実 writer/S2 行・評価・判断も比較する。
+pipeline は dry_run=True、昇格実行は0。外部親テーブルの stub は使用しない。
+output は既存なら拒否し、別の `.events` directory に合成監査記録を残す。
+
+台帳 89 ケースの比較は PR #1 checkout と統合 checkout のそれぞれに空の別 DB を用意して行う。
+`QED_PG_DSN` をその専用 DB にだけ設定し、次を実行する。
+
+```bash
 python -m pytest -q \
   tests/integration/test_adr002_lineage_pg.py \
   tests/integration/test_adr002_s3_manual_pg.py \
   tests/integration/test_adr002_ledger_immutability_pg.py \
   tests/integration/test_trial_snapshot_capture_pg.py
-~~~
+```
 
-実ledger機能の順序は084→086→087→088→089。
-087は084→087でも成立するが、新S3 clientには088/089が必要。
-二回再適用後の全行値/capture replay/同一再送を確認する。
-台帳89ケースは外部parent stubなし。late commitでlive as-ofが変化する既存挙動を解消済みとしない。
+## 全体 standalone DB 試験と親スキーマ 7 件の境界
 
-全体standalone用にはさらに別空DBを作り、QED_MIGRATION_TEST_DSNを指定して
-tests/integration/test_migrations_apply_pg.pyを実行する。
-その既存fixtureは外部最小stubを使う。親アプリ7件の実schemaやfixtureの代替ではない。
+別の空 DB で、既存 `test_migrations_apply_pg.py` を `QED_MIGRATION_TEST_DSN` 指定で実行する。
+この既存 fixture が使う experiment_runs/audit_events 等の最小 stub は standalone 用であり、
+evidence_bundles/factor_candidates の実 schema を再現しない。stub を増やして7件を通さない。
 
-migration後に以下の実repository view DDLも番号順に適用する。
-- qedschema/views/060_v_frost_runs.sql
-- qedschema/views/061_v_frost_candidate_scores.sql
-- qedschema/views/062_v_frost_selection_summary.sql
-- qedschema/views/063_v_frost_promotion_status.sql
+その後、repository の次の実 view DDL を番号順に適用する。
 
-両DB変数をその同じ専用DBに設定し、以下を実行する。
-~~~bash
+```text
+qedschema/views/060_v_frost_runs.sql
+qedschema/views/061_v_frost_candidate_scores.sql
+qedschema/views/062_v_frost_selection_summary.sql
+qedschema/views/063_v_frost_promotion_status.sql
+```
+
+migration だけの初期状態では view 未作成による7失敗を実際に再現した。
+view DDL 適用後に、両 DB 変数をその同じ専用 DB に設定して実行する。
+
+```bash
 python -m pytest -q -m 'not parent_app_integration'
-~~~
+```
 
-7件はdeselected/未検証と報告する。正式な親migration/dump/fixture版とhash取得後に実結合する。
-stub追加やskip化で成功扱いしない。全migration二重適用成功は親互換の証拠ではない。
+親依存7件は deselected と記録し、検証済みにしない。正式な親 migration/dump/fixture の版と
+hash を取得してから別の空 DB で実結合する。全migration二重適用の成功は実結合の証拠にならない。
 
-## SciPy参照
-既存2件はSciPyなしでskipする。application venvを変えず別directoryへ
-SciPy1.16.3をpip --target/--no-depsで導入し、PYTHONPATHに対象treeとそのdirectoryを指定した。
-次のIDはmain/統合双方2成功。さらに同じisolated dependencyを指定した全体PGは2217成功/skip0、7件deselected。
-- tests/unit/test_phase4_dsr.py::TestNormalFunctions::test_against_scipy
-- tests/unit/test_phase4_dsr.py::TestSampleMoments::test_against_scipy
+## SciPy 参照2件の補完
 
-先行する2215成功/2skipの履歴を書き換えない。baseline再生成/xfail/skip追加はない。
+既存2件は SciPy がないと importorskip する。primary baseline/replay の環境を変えず、
+別 directory へ test-only SciPy 1.16.3 を `pip --target ... --no-deps` で導入し、
+PYTHONPATH に対象 checkout とその directory を設定して以下の2 IDを main と統合の両方で実行した。
 
-## 追加probeと残る証跡
-別の合成probeでC/D相互不変、実writer audit有無、S1/S2/S3合算、copy/restore、
-local tail checkpoint、未監査run差分、fsyncを検証した。
-当該3script、生XML/ログ、post-restart整合性の確認はCloud復帰後に回収する。
-この手順書を未回収scriptのソースそのものと呼ばない。
+```text
+tests/unit/test_phase4_dsr.py::TestNormalFunctions::test_against_scipy
+tests/unit/test_phase4_dsr.py::TestSampleMoments::test_against_scipy
+```
 
-既存ログ/manifestを保持して作成したcontainer/DB/volumeだけをcleanupする。
-今回は環境断後のcleanup完了を確認できていない。
-既存branch/main/本番DB/ProStock2原本を削除しない。実データの未送原本は期限だけで削除しない。
+双方2成功・失敗0・skip0。primary の2215成功/2skipという履歴は書き換えない。
+隔離依存を指定した全体PG実行でも2217成功/失敗0/skip0、親依存7件deselectedを確認した。
+既存baselineの再生成、xfail化、skip追加、runtimeへのSciPy導入は行っていない。
+
+## 終了後
+
+log/XML/manifest/result を保存し、作成した container・テスト DB・volume だけを停止／削除する。
+worktree と local branch は調査用に残せる。不要になったらこの run が作った path/ref のみを削除する。
+ProStock2 の原本、既存 branch/main、実 DB、他のコンテナや volume を cleanup の対象にしない。
+
+Cloud接続断の間はGitHub connectorで監査文書を先に保存した。復帰後にこの手順の3scriptと
+生JUnit/logを回収し、SHA付きbundleを追加した。source/backup/restoreのlocal checkpointと
+固定capture16件を再取得検証した。fixtureが意図的に保持するzero hashの破損capture1件は
+拒否されることを確認し、正常captureへ書き換えない。全体PG再実行も2217成功である。
