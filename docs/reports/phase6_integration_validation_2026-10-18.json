@@ -1,0 +1,249 @@
+{
+  "phase": 6,
+  "date_utc": "2026-10-18",
+  "baseline_main": "a3e63907c2f529f289101698ee7d62f8bf72f436",
+  "pr_heads_file": "phase6_pr_heads_2026-10-18.json",
+  "verified_integration_order": [
+    2,
+    1,
+    3,
+    4,
+    5,
+    6
+  ],
+  "merge_conflicts": [],
+  "shared_changed_files": [],
+  "unique_changed_files": 70,
+  "all_changed_files_equal_pinned_owner_pr": true,
+  "stages": {
+    "pr1_5": {
+      "local_head": "9da4f6639013cd4f532dd51da0e6b356de39d7db",
+      "tree": "bda32f10ad25cda4b003d1004846c14e9c65e00f"
+    },
+    "pr1_6": {
+      "local_head": "beb22861f64b4b40f4c77e78d4bc16f10a82eae3",
+      "tree": "5ed8cb89bc0aa2dc93b83597099595d4c75b232a"
+    }
+  },
+  "tests": {
+    "main_no_db": {
+      "passed": 1606,
+      "failed": 3,
+      "skipped": 70,
+      "deselected": 0,
+      "exit_code": 1,
+      "failure_ids": [
+        "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+        "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+        "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+      ]
+    },
+    "pr1_5_no_db": {
+      "passed": 1985,
+      "failed": 0,
+      "skipped": 156,
+      "deselected": 0,
+      "exit_code": 0,
+      "failure_ids": []
+    },
+    "pr1_6_no_db": {
+      "passed": 2068,
+      "failed": 0,
+      "skipped": 156,
+      "deselected": 0,
+      "exit_code": 0,
+      "failure_ids": []
+    },
+    "pr1_ledger_pg": {
+      "passed": 89,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0
+    },
+    "integrated_ledger_pg": {
+      "passed": 89,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0
+    },
+    "all_migrations_standalone": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0
+    },
+    "integrated_pg_before_views": {
+      "passed": 211,
+      "failed": 7,
+      "skipped": 0,
+      "deselected": 7,
+      "reason": "Repository FROST views 060-063 were not installed"
+    },
+    "integrated_pg_after_views": {
+      "passed": 218,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 7
+    },
+    "integrated_full_pg_before_scipy": {
+      "passed": 2215,
+      "failed": 0,
+      "skipped": 2,
+      "deselected": 7
+    },
+    "main_isolated_scipy_reference": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "exit_code": 0
+    },
+    "integrated_isolated_scipy_reference": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "exit_code": 0
+    },
+    "integrated_full_pg_final": {
+      "passed": 2217,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 7
+    }
+  },
+  "primary_no_db_independent_replay_counts_and_ids_match": true,
+  "removed_baseline_test_ids": [],
+  "duplicate_test_ids": [],
+  "new_failure_ids": [],
+  "resolved_main_failure_ids": [
+    "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float",
+    "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_float_opt",
+    "tests.unit.test_phase6_base_writer.TestFrostWriterImport::test_module_imports_safe_json"
+  ],
+  "captured_replay_junit_sha256": {
+    "main_no_db": "b55f7bf4198d5278bf15215fe7b632a739dc7c211a37ce3e77cb804c6dd97aa1",
+    "pr1_5_no_db": "10501a8029b761fc4661142941bedfc21b8b4870e15b655ecd1d21cf00d2abc9",
+    "pr1_6_no_db": "466418ad2de39883a59dd4cf5b2d4e4508e0dd48beb2c5d17d8122f1f4282235"
+  },
+  "final_pg_junit_sha256": null,
+  "final_pg_junit_sha256_status": "Not computed before execution-environment disconnection; do not infer",
+  "parent_app_test_ids_collected_not_executed": [
+    "tests/integration/test_pipeline_integration.py::TestPhaseBExperimentReport::test_bridge_creates_experiment_run",
+    "tests/integration/test_pipeline_integration.py::TestPhaseBExperimentReport::test_bridge_idempotent",
+    "tests/integration/test_pipeline_integration.py::TestPhaseCKnowledgeArtifact::test_ka_bridge_creates_artifact",
+    "tests/integration/test_pipeline_integration.py::TestPhaseCKnowledgeArtifact::test_ka_bridge_idempotent",
+    "tests/integration/test_pipeline_integration.py::TestPhaseDTargetResolution::test_unresolved_when_no_code",
+    "tests/integration/test_pipeline_integration.py::TestPhaseDTargetResolution::test_resolved_when_valid_candidate_code",
+    "tests/integration/test_pipeline_integration.py::TestUpsertNoDuplicates::test_full_pipeline_rerun_no_duplicates"
+  ],
+  "protected_sources_unchanged": [
+    "analytics/python/alpha/eml/eml_lineage.py",
+    "analytics/python/frost/frost_dsr.py",
+    "analytics/python/frost/frost_pbo.py",
+    "analytics/python/frost/frost_pbo_parallel.py",
+    "analytics/python/frost/score_engine.py",
+    "analytics/python/frost/gate_engine.py",
+    "analytics/python/frost/frost_decision_engine.py",
+    "analytics/python/frost/promotion_gates.py",
+    "analytics/python/frost/frost_lineage.py",
+    "analytics/python/frost/frost_run_lineage.py"
+  ],
+  "golden_baselines_unchanged": true,
+  "postgres": {
+    "server_version": "16.15",
+    "image_digest": "sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4",
+    "network_mode": "none",
+    "connection": "Owned Unix socket; new disposable synthetic databases",
+    "parent_stubs_in_ledger_probe": false,
+    "parent_stubs_in_existing_all_migration_fixture": true,
+    "parent_app_integration_verified": false,
+    "production_connected": false
+  },
+  "migration_probe": {
+    "synthetic_only": true,
+    "migration_order": [
+      84,
+      86,
+      87,
+      88,
+      89
+    ],
+    "missing_prerequisites_rejected": true,
+    "snapshot_084_087_without_086": true,
+    "reapplications": 2,
+    "row_values_unchanged": true,
+    "s1_n_raw": 3,
+    "s2_n_raw": 2,
+    "s3_n_raw": 2,
+    "combined_n_raw": 7,
+    "sr_sufficient_stat_count": 2,
+    "s2_duplicate_hash_counted_once": true,
+    "s2_eml_excluded": true,
+    "exact_retry_idempotent": true,
+    "capture_replay_hash_verified": true,
+    "live_asof_changes_after_late_commit": true,
+    "saved_capture_remains_fixed": true,
+    "frost_audit_on_off_real_writer_and_s2_equal": true,
+    "frost_per_run_s2_n_raw": 2,
+    "real_promotion_count": 0,
+    "owned_probe_database_dropped": true
+  },
+  "local_recovery_probe": {
+    "synthetic_only": true,
+    "probe_source_sha256": "deb0a70b0877cf4331b69703f98249502c2367b7b2bc2fd57b563dd508c165b6",
+    "c_d_independent": true,
+    "eml_results_and_s1_stats_equal": true,
+    "s1_n_raw": 2,
+    "same_original_retry_idempotent": true,
+    "pretty_single_json_quarantined_unchanged": true,
+    "local_backup_restore_verified": true,
+    "off_host_backup_tested": false,
+    "local_checkpoint_detected_suffix_removal": true,
+    "external_anchor_implemented": false,
+    "synthetic_unaudited_run_detected": true,
+    "research_eligible": false,
+    "fsync": {
+      "samples": 64,
+      "bytes_per_sample": 4096,
+      "file_ms": {
+        "p05": 0.4026530004921369,
+        "p50": 0.48269449962390354,
+        "p95": 0.7759969994367566
+      },
+      "directory_ms": {
+        "p05": 0.12667999999393942,
+        "p50": 0.16596850036876276,
+        "p95": 0.24897599996620556
+      },
+      "logical_sync_pairs_per_second": 1206.963409437281,
+      "physical_device_iops": null,
+      "allocated_file_bytes": 262144,
+      "available_filesystem_bytes": 27308507136,
+      "available_filesystem_inodes": 1966888
+    }
+  },
+  "isolated_scipy_reference": {
+    "version": "1.16.3",
+    "application_venv_modified": false,
+    "runtime_dependency_added": false
+  },
+  "provenance_limitations": {
+    "execution_environment": "Offline/starting after final tests; commands could no longer read the workspace",
+    "remote_publication": "GitHub connector used to preserve previously observed results and designs",
+    "raw_junit_and_logs": "Not recovered or uploaded after disconnection",
+    "local_uncommitted_probe_and_replay_scripts": "Not recovered or uploaded; this PR contains documentation only",
+    "workspace_post_restart_integrity": "Not verified",
+    "disposable_pg_container_and_volume_cleanup": "Not confirmed; cleanup command did not execute",
+    "final_log_observation": "Observed 2217 passed, 7 deselected, 28830 warnings in 78.11 seconds before disconnection"
+  },
+  "main_or_existing_pr_modified": false,
+  "real_exporter_originals_received": false,
+  "note008_adoption": "HOLD",
+  "new_hard_gates": "HOLD",
+  "decision": {
+    "software_integration_observed": "GO",
+    "final_integration_signoff_until_raw_evidence_recovered": "HOLD",
+    "real_exporter_and_production": "HOLD"
+  }
+}
