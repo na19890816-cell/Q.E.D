@@ -121,6 +121,7 @@ def run_eml_discovery(
     target: pd.Series,
     regime_mask: Optional[pd.Series] = None,
     event_mask: Optional[pd.Series] = None,
+    audit=None,
 ) -> EMLDiscoveryOutput:
     """
     EML alpha discovery フル実行。
@@ -144,6 +145,21 @@ def run_eml_discovery(
     ts_hash = hashlib.md5(
         json.dumps(sorted(terminals)).encode()
     ).hexdigest()[:16]
+    audit_scope = None
+    if audit is not None:
+        from dataclasses import asdict
+        from .eml_fitness import _get_weights
+        from analytics.python.audit.exploration_events import evidence_hash
+        from analytics.python.frost.frost_lineage import make_family_key
+        audit.require_run(config.run_id)
+        family = make_family_key(config.target_horizon, config.universe, config.target_name, ts_hash)
+        if family != audit.context["family_key"]:
+            from analytics.python.audit.exploration_events import AuditError
+            raise AuditError("EML research family differs from audit context")
+        effective_weights = _get_weights()
+        effective_settings = {"config": asdict(config), "effective_promotion_fitness_weights": effective_weights}
+        audit_scope = audit.start_scope("eml_discovery", {**effective_settings,
+                                                         "effective_settings_sha256": evidence_hash(effective_settings)})
 
     # depth ガード
     max_depth = min(max(config.max_depth, EML_DEPTH_MIN), EML_DEPTH_MAX)
@@ -166,6 +182,7 @@ def run_eml_discovery(
             fitness_fn=simple_rank_ic_fitness,
             top_k=config.top_k_exhaustive,
             stats_out=search_stats,
+            **({"audit": audit} if audit is not None else {}),
         )
         candidates.extend(ex_cands)
 
@@ -183,6 +200,7 @@ def run_eml_discovery(
             top_k=config.top_k_gradient,
             rng_seed=config.rng_seed,  # golden run の決定論性確保
             stats_out=search_stats,
+            **({"audit": audit} if audit is not None else {}),
         )
         candidates.extend(gr_cands)
 
@@ -196,6 +214,9 @@ def run_eml_discovery(
         if c.compiled_expr not in seen or c.fitness_score > seen[c.compiled_expr].fitness_score:
             seen[c.compiled_expr] = c
     candidates = list(seen.values())
+    if audit is not None:
+        audit.note("CANDIDATE_DISPOSITION", {"scope_id": audit_scope, "step": "expression_dedup",
+                                            "remaining_candidate_ids": [c.candidate_id for c in candidates]})
 
     # ------------------------------------------------------------------ #
     # 安全式検証 (look-ahead bias ガード)
@@ -209,6 +230,9 @@ def run_eml_discovery(
         except ValueError as e:
             c.status = "rejected"
             c.rejection_reason = f"UNSAFE_EXPR: {e}"
+            if audit is not None:
+                audit.note("CANDIDATE_DISPOSITION", {"scope_id": audit_scope, "candidate_id": c.candidate_id,
+                                                    "step": "safe_expression", "status": "REJECTED"})
     candidates = safe_candidates
 
     # ------------------------------------------------------------------ #
@@ -225,6 +249,15 @@ def run_eml_discovery(
 
     eval_results: List[EMLEvaluationResult] = []
     for c in candidates:
+        trial = f"{audit_scope}/{c.candidate_id}"
+        if audit is not None:
+            from .eml_fitness import _get_weights
+            if _get_weights() != effective_weights:
+                from analytics.python.audit.exploration_events import AuditError
+                raise AuditError("EML effective weights changed during audited discovery")
+            audit.start_trial(audit_scope, trial, evidence={"candidate_id": c.candidate_id,
+                              "formula_key": c.compiled_expr}, counting_owner="ADR002_S1",
+                              n_raw_role="reference_only_requires_s1_evidence")
         ev = runner.run(c)
         eval_results.append(ev)
 
@@ -236,6 +269,19 @@ def run_eml_discovery(
         c.metadata["rank_ic"]              = ev.rank_ic
         c.metadata["cost_adjusted_sharpe"] = ev.sharpe
         c.metadata["regime_consistency"]   = ev.regime_consistency_score
+        if audit is not None:
+            from dataclasses import asdict
+            from analytics.python.audit.exploration_events import contains_nonfinite
+            evaluation_evidence = asdict(ev)
+            evaluation_failed = bool(evaluation_evidence.get("metadata", {}).get("error"))
+            if evaluation_failed:
+                # Error strings can contain paths or credentials; preserve a
+                # typed failure marker, not the exception's arbitrary message.
+                evaluation_evidence["metadata"] = {k: v for k, v in evaluation_evidence["metadata"].items() if k != "error"}
+                evaluation_evidence["metadata"]["evaluation_error_recorded"] = True
+            status = "FAILED" if evaluation_failed or full_fitness == -999.0 else "NONFINITE" if contains_nonfinite(evaluation_evidence) or contains_nonfinite(full_fitness) else "SUCCEEDED"
+            audit.finish_trial(trial, status=status, result={"evaluation": evaluation_evidence,
+                                                             "full_fitness": full_fitness})
 
     # ------------------------------------------------------------------ #
     # フィットネス閾値による促進/却下
@@ -266,6 +312,14 @@ def run_eml_discovery(
                 )
             c.rejection_reason = "; ".join(reason_parts) or "BELOW_THRESHOLD"
             rejected.append(c)
+
+    if audit is not None:
+        for c in candidates:
+            audit.note("CANDIDATE_DISPOSITION", {"scope_id": audit_scope, "candidate_id": c.candidate_id,
+                                                "step": "eml_promotion_threshold", "status": c.status})
+        audit.finish_scope(audit_scope, {"total_searched_after_top_k": total_searched,
+                                        "n_promoted": len(promoted), "n_rejected": len(rejected),
+                                        "s1_n_raw": sum(s.n_trials for s in search_stats)})
 
     return EMLDiscoveryOutput(
         run_id=config.run_id,

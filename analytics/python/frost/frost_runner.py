@@ -107,6 +107,7 @@ def run_frost_pipeline(
     conn: Optional[psycopg.Connection] = None,
     trace_id: Optional[str] = None,
     run_id: Optional[str] = None,
+    audit=None,
 ) -> FrostRunOutput:
     """
     FROST パイプライン全体を実行する。
@@ -143,6 +144,15 @@ def run_frost_pipeline(
     # ── Phase 1: PolicySpec スナップショット生成 ──────────────────────────
     policy_spec: PolicySpec = policy_spec_from_frost_config(config)
     policy_hash: str = policy_spec.policy_hash
+    audit_scope = None
+    if audit is not None:
+        from analytics.python.audit.exploration_events import AuditError
+        audit.require_run(run_id)
+        if audit.context["policy_hash"].removeprefix("sha256:") != policy_hash.removeprefix("sha256:"):
+            raise AuditError("FROST policy differs from audit context")
+        audit_scope = audit.start_scope("frost_pipeline", {"policy": policy_spec.to_dict(),
+                                                          "candidate_count": len(candidates),
+                                                          "enabled": config.enabled, "dry_run": config.dry_run})
 
     output = FrostRunOutput(
         run_id=run_id,
@@ -172,12 +182,16 @@ def run_frost_pipeline(
         output.hold_count = len(candidates)
         output.status = "skipped"
         output.ended_at = _now()
+        if audit is not None:
+            audit.finish_scope(audit_scope, {"status": "skipped", "n_evaluated": 0,
+                                            "hold_count": len(candidates)})
         _write_output(output, config, conn)
         return output
 
     try:
         # ── Step 1: 評価 ────────────────────────────────────────────────
-        evaluations = evaluate_candidates_batch(candidates, run_id, trace_id, config)
+        evaluations = evaluate_candidates_batch(candidates, run_id, trace_id, config,
+                                                 **({"audit": audit} if audit is not None else {}))
         output.evaluations = evaluations
         output.evaluated_count = len(evaluations)
 
@@ -198,11 +212,24 @@ def run_frost_pipeline(
         output.ended_at  = _now()
 
     except Exception as exc:
+        if audit is not None:
+            from analytics.python.audit.exploration_events import AuditError
+            if isinstance(exc, AuditError):
+                raise
+            audit.note("RUN_FAILED", {"scope_id": audit_scope, "error_type": type(exc).__name__})
         output.status        = "failed"
         output.error_message = f"{type(exc).__name__}: {exc}"
         output.ended_at      = _now()
         if config.verbose:
             traceback.print_exc()
+
+    if audit is not None and output.status != "failed":
+        from dataclasses import asdict
+        for decision in output.decisions:
+            audit.note("CANDIDATE_DISPOSITION", {"scope_id": audit_scope, "decision": asdict(decision)})
+        audit.finish_scope(audit_scope, {"status": output.status, "evaluated_count": output.evaluated_count,
+                                        "selected_count": output.selected_count, "hold_count": output.hold_count,
+                                        "rejected_count": output.rejected_count})
 
     # ── Step 4: DB 書き込み ────────────────────────────────────────────
     _write_output(output, config, conn)

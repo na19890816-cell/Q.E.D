@@ -25,7 +25,9 @@ Phase 8 (P8) メタ検証: FROST 選抜器自身の頑健性を測る。
 
 設計原則:
   - pure Python (ADR-001: statistics / scipy 不使用)。乱数は random.Random(seed) で決定論的
-  - 副作用なし: 入力候補・config を変更しない (config は dataclasses.replace で複製)
+  - 入力候補・config を変更しない (config は dataclasses.replace で複製)
+  - audit 指定時のみ、評価前の設定と個別結果を観測用イベントへ永続化する。
+    N_raw / DSR 台帳には加算しない。未指定時は従来どおり副作用なし
   - 重みはスコアにしか効かないため、ablation / 摂動は「証拠を 1 回だけ計算し再スコア」する。
     再スコア結果がフルリプレイと一致することは単体テストで保証する
   - 本モジュールは観測のみ。結果に基づくポリシー変更は本計画スコープ外 (新 Note として登録)
@@ -37,6 +39,7 @@ import hashlib
 import json
 import math
 import random
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -340,6 +343,70 @@ class MetaValidationReport:
 # 分析本体
 # ---------------------------------------------------------------------------
 
+def _research_scope(audit: Any, stage: str, candidates: Sequence[Any], config: Any,
+                    settings: Dict[str, Any], bundles: Any = None) -> Optional[str]:
+    """Fix the input/configuration evidence before any research evaluation.
+
+    The caller's historical N is evidence, not an inferred candidate count. A
+    missing N remains null. Connection settings are never copied into the journal.
+    """
+    if audit is None:
+        return None
+    from analytics.python.audit.exploration_events import AuditError, evidence_hash
+
+    if audit.context["policy_hash"].removeprefix("sha256:") != _policy_hash(config).removeprefix("sha256:"):
+        raise AuditError("research baseline policy differs from audit context")
+
+    config_fields = (dataclasses.asdict(config) if dataclasses.is_dataclass(config)
+                     else config.to_dict())
+    config_fields = {k: v for k, v in config_fields.items() if k != "pg_dsn"}
+    candidate_inputs = [dataclasses.asdict(c) if dataclasses.is_dataclass(c) else {
+        k: getattr(c, k, None) for k in (
+            "candidate_id", "candidate_hash", "source_candidate_id", "formula_text",
+            "complexity_score", "horizon", "backtest_summary", "metrics",
+            "regime_breakdown", "fold_results",
+        )} for c in candidates]
+    fixed = {
+        "config": config_fields,
+        "policy_hash": _policy_hash(config),
+        "dataset_hash": dataset_hash(candidates),
+        "candidate_input_sha256": evidence_hash(candidate_inputs),
+        "candidate_order": [getattr(c, "candidate_id", None) for c in candidates],
+        "input_evidence_sha256": audit.context["input_evidence_sha256"],
+        "historical_n_raw": audit.context["historical_n_raw"],
+        **settings,
+    }
+    if bundles is not None:
+        fixed["cached_bundle_sha256"] = evidence_hash(bundles)
+    return audit.start_scope(stage, fixed)
+
+
+@contextmanager
+def _research_trial(audit: Any, scope_id: Optional[str], trial_index: int,
+                    config: Any, setting: Dict[str, Any]):
+    """Persist start before evaluation and preserve failures without error text."""
+    result: Dict[str, Any] = {}
+    if audit is None:
+        yield result
+        return
+    trial_id = f"{scope_id}:configuration:{trial_index}"
+    audit.start_trial(scope_id, trial_id,
+                      evidence={"policy_hash": _policy_hash(config), "setting": setting},
+                      counting_owner="RESEARCH_ONLY", n_raw_role="research_configuration")
+    try:
+        yield result
+    except BaseException as exc:
+        audit.finish_trial(trial_id, status="FAILED", result={"error_type": type(exc).__name__},
+                           formula_key=None)
+        raise
+    else:
+        audit.finish_trial(trial_id, status="SUCCEEDED", result=result, formula_key=None)
+
+
+def _finish_research_scope(audit: Any, scope_id: Optional[str], n_settings: int) -> None:
+    if audit is not None:
+        audit.finish_scope(scope_id, {"evaluated_configurations": n_settings, "ledger_writes": 0})
+
 def perturb_threshold(config: Any, field_name: str, delta: float, clip01: bool) -> Any:
     """閾値を (1 + delta) 倍した config 複製を返す。"""
     val = float(getattr(config, field_name)) * (1.0 + delta)
@@ -354,18 +421,30 @@ def threshold_sensitivity(
     base: ReplaySnapshot,
     deltas: Sequence[float] = DEFAULT_THRESHOLD_DELTAS,
     gates: Optional[Sequence[str]] = None,
+    audit: Any = None,
 ) -> List[MetaValidationRow]:
+    scope = _research_scope(audit, ANALYSIS_THRESHOLD, candidates, config,
+                            {"deltas": list(deltas), "gates": list(gates or GATE_THRESHOLD_FIELDS),
+                             "planned_configurations": len(gates or GATE_THRESHOLD_FIELDS) * len(deltas),
+                             "baseline": dataclasses.asdict(base)} if audit is not None else {})
     rows = []
     for gate in (gates or list(GATE_THRESHOLD_FIELDS)):
         field_name, clip01 = GATE_THRESHOLD_FIELDS[gate]
         for delta in deltas:
             cfg = perturb_threshold(config, field_name, delta, clip01)
-            snap = full_replay(candidates, cfg)
-            m = compare_snapshots(base, snap, gate=gate, promotion_top_k=config.promotion_top_k)
-            m["field"] = field_name
-            m["base_value"] = float(getattr(config, field_name))
-            m["perturbed_value"] = float(getattr(cfg, field_name))
+            setting = {"gate": gate, "field": field_name, "delta": delta,
+                       "base_value": float(getattr(config, field_name)),
+                       "perturbed_value": float(getattr(cfg, field_name))}
+            with _research_trial(audit, scope, len(rows), cfg, setting) as evidence:
+                snap = full_replay(candidates, cfg)
+                m = compare_snapshots(base, snap, gate=gate, promotion_top_k=config.promotion_top_k)
+                m["field"] = field_name
+                m["base_value"] = float(getattr(config, field_name))
+                m["perturbed_value"] = float(getattr(cfg, field_name))
+                if audit is not None:
+                    evidence.update(snapshot=dataclasses.asdict(snap), metrics=dict(m))
             rows.append(MetaValidationRow(ANALYSIS_THRESHOLD, gate, f"{delta:+.0%}", m))
+    _finish_research_scope(audit, scope, len(rows))
     return rows
 
 
@@ -375,14 +454,24 @@ def axis_ablation(
     config: Any,
     base: ReplaySnapshot,
     weights: Sequence[str] = V1_WEIGHT_FIELDS,
+    audit: Any = None,
 ) -> List[MetaValidationRow]:
+    scope = _research_scope(audit, ANALYSIS_ABLATION, candidates, config,
+                            {"weights": list(weights), "planned_configurations": len(weights),
+                             "baseline": dataclasses.asdict(base)} if audit is not None else {}, bundles)
     rows = []
     for w in weights:
         cfg = dataclasses.replace(config, **{w: 0.0})
-        snap = weight_replay(candidates, bundles, cfg)
-        m = compare_snapshots(base, snap, promotion_top_k=config.promotion_top_k)
-        m["base_weight"] = float(getattr(config, w))
+        with _research_trial(audit, scope, len(rows), cfg,
+                             {"field": w, "base_weight": float(getattr(config, w)),
+                              "perturbed_weight": 0.0}) as evidence:
+            snap = weight_replay(candidates, bundles, cfg)
+            m = compare_snapshots(base, snap, promotion_top_k=config.promotion_top_k)
+            m["base_weight"] = float(getattr(config, w))
+            if audit is not None:
+                evidence.update(snapshot=dataclasses.asdict(snap), metrics=dict(m))
         rows.append(MetaValidationRow(ANALYSIS_ABLATION, w, "zero", m))
+    _finish_research_scope(audit, scope, len(rows))
     return rows
 
 
@@ -395,18 +484,28 @@ def weight_perturbation(
     noise: float = DEFAULT_WEIGHT_NOISE,
     seed: int = 20261003,
     weights: Sequence[str] = V1_WEIGHT_FIELDS,
+    audit: Any = None,
 ) -> List[MetaValidationRow]:
     """全重みに乗法ノイズ U(-noise, +noise) を N 回。分布サマリ行 1 行を返す。"""
+    scope = _research_scope(audit, ANALYSIS_WEIGHT, candidates, config,
+                            {"weights": list(weights), "noise": noise, "seed": seed,
+                             "planned_configurations": n_runs,
+                             "baseline": dataclasses.asdict(base)} if audit is not None else {}, bundles)
     rng = random.Random(seed)
     taus: List[float] = []
     taus_p: List[float] = []
     jacs: List[float] = []
     promos: List[float] = []
     flips: List[float] = []
-    for _ in range(n_runs):
+    for trial_index in range(n_runs):
         override = {w: float(getattr(config, w)) * (1.0 + rng.uniform(-noise, noise)) for w in weights}
-        snap = weight_replay(candidates, bundles, dataclasses.replace(config, **override))
-        m = compare_snapshots(base, snap, promotion_top_k=config.promotion_top_k)
+        cfg = dataclasses.replace(config, **override)
+        with _research_trial(audit, scope, trial_index, cfg,
+                             {"index": trial_index, "override": override}) as evidence:
+            snap = weight_replay(candidates, bundles, cfg)
+            m = compare_snapshots(base, snap, promotion_top_k=config.promotion_top_k)
+            if audit is not None:
+                evidence.update(snapshot=dataclasses.asdict(snap), metrics=dict(m))
         if m["kendall_tau"] is not None:
             taus.append(m["kendall_tau"])
         if m["kendall_tau_passed"] is not None:
@@ -430,6 +529,7 @@ def weight_perturbation(
         "decision_flip_rate": summarize_distribution(flips)["mean"],
         "decision_flip_rate_dist": summarize_distribution(flips),
     }
+    _finish_research_scope(audit, scope, max(0, n_runs))
     return [MetaValidationRow(ANALYSIS_WEIGHT, "all_v1_weights", f"±{noise:.0%}x{n_runs}", metrics)]
 
 
@@ -459,10 +559,19 @@ def run_meta_validation(
     noise: float = DEFAULT_WEIGHT_NOISE,
     seed: int = 20261003,
     analyses: Sequence[str] = (ANALYSIS_THRESHOLD, ANALYSIS_ABLATION, ANALYSIS_WEIGHT),
+    audit: Any = None,
 ) -> MetaValidationReport:
     """3 分析をまとめて実行する。"""
-    bundles = compute_bundles(candidates, config)
-    base = _decide(candidates, bundles, config)
+    scope = _research_scope(audit, "meta_baseline", candidates, config,
+                            {"analyses": list(analyses), "deltas": list(deltas), "n_runs": n_runs,
+                             "noise": noise, "seed": seed, "planned_configurations": 1})
+    with _research_trial(audit, scope, 0, config, {"baseline": True}) as evidence:
+        bundles = compute_bundles(candidates, config)
+        base = _decide(candidates, bundles, config)
+        if audit is not None:
+            from analytics.python.audit.exploration_events import evidence_hash
+            evidence.update(snapshot=dataclasses.asdict(base), bundle_sha256=evidence_hash(bundles))
+    _finish_research_scope(audit, scope, 1)
     counts: Dict[str, int] = {}
     for d in base.decisions.values():
         counts[d] = counts.get(d, 0) + 1
@@ -484,11 +593,11 @@ def run_meta_validation(
                 "use_v2_score": bool(getattr(config, "use_v2_score", False))},
     )
     if ANALYSIS_THRESHOLD in analyses:
-        report.rows += threshold_sensitivity(candidates, config, base, deltas)
+        report.rows += threshold_sensitivity(candidates, config, base, deltas, audit=audit)
     if ANALYSIS_ABLATION in analyses:
-        report.rows += axis_ablation(candidates, bundles, config, base)
+        report.rows += axis_ablation(candidates, bundles, config, base, audit=audit)
     if ANALYSIS_WEIGHT in analyses:
-        report.rows += weight_perturbation(candidates, bundles, config, base, n_runs, noise, seed)
+        report.rows += weight_perturbation(candidates, bundles, config, base, n_runs, noise, seed, audit=audit)
     return report
 
 

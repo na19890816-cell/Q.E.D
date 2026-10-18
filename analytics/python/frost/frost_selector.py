@@ -157,14 +157,52 @@ def evaluate_candidates_batch(
     run_id: str,
     trace_id: str,
     config: FrostConfig,
+    audit=None,
 ) -> List[FrostEvaluation]:
     """
     候補リストを一括評価して FrostEvaluation のリストを返す。
     """
-    return [
-        evaluate_candidate(c, run_id, trace_id, config)
-        for c in candidates
-    ]
+    if audit is None:
+        return [evaluate_candidate(c, run_id, trace_id, config) for c in candidates]
+    from dataclasses import asdict
+    from analytics.python.audit.exploration_events import AuditError, evidence_hash, contains_nonfinite
+    from analytics.python.frost.frost_run_lineage import candidate_family, ledger_defaults_from_env
+    from analytics.python.frost.policy_spec import policy_spec_from_frost_config
+    audit.require_run(run_id)
+    policy = policy_spec_from_frost_config(config)
+    if audit.context["policy_hash"].removeprefix("sha256:") != policy.policy_hash.removeprefix("sha256:"):
+        raise AuditError("FROST policy differs from audit context")
+    defaults = ledger_defaults_from_env()
+    scope = audit.start_scope("frost_evaluation", {"policy": policy.to_dict(),
+                                                   "policy_hash": policy.policy_hash,
+                                                   "lineage_defaults": defaults,
+                                                   "candidate_count": len(candidates)})
+    # Register every received candidate before the first evaluation; a crash is
+    # distinguishable from an empty batch or an ungenerated candidate.
+    for index, candidate in enumerate(candidates):
+        family, spec, used_default = candidate_family(candidate, defaults["default_universe"], defaults["default_target"])
+        audit.start_trial(scope, f"{scope}/{index}", evidence={
+            "candidate_id": candidate.candidate_id, "source_type": candidate.source_type,
+            "candidate_input_sha256": evidence_hash(asdict(candidate)), "family_key": family,
+            "input_contains_nonfinite": contains_nonfinite(candidate),
+            "family_spec": spec, "family_used_existing_defaults": used_default,
+            "candidate_hash": candidate.candidate_hash},
+            counting_owner="ADR002_S1" if candidate.source_type == "eml" else "ADR002_S2",
+            n_raw_role="excluded_by_s2_requires_s1_evidence" if candidate.source_type == "eml" else "distinct_hash_per_family_run")
+    evaluations = []
+    for index, candidate in enumerate(candidates):
+        trial = f"{scope}/{index}"
+        audit.note("EVALUATION_STARTED", {"trial_id": trial, "kind": "frost"})
+        try:
+            evaluation = evaluate_candidate(candidate, run_id, trace_id, config)
+        except BaseException as exc:
+            audit.finish_trial(trial, status="FAILED", result={"error_type": type(exc).__name__})
+            raise
+        audit.finish_trial(trial, status="NONFINITE" if contains_nonfinite(evaluation) else "SUCCEEDED", result=asdict(evaluation),
+                           formula_key=candidate.candidate_hash or f"cid:{candidate.candidate_id}")
+        evaluations.append(evaluation)
+    audit.finish_scope(scope, {"n_evaluated": len(evaluations)})
+    return evaluations
 
 
 # ---------------------------------------------------------------------------
